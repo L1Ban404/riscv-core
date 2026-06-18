@@ -12,31 +12,22 @@ module riscv_core (
   input pc_t boot_pc_i,
 
   // ---------------------------------------------------------------------------
-  // 取指存储器接口
+  // AXI4-Lite 取指接口
   // ---------------------------------------------------------------------------
   //
-  // 这里先采用轻量级 request/response 风格接口，避免核心一开始绑定到
-  // AXI/Wishbone 等 SoC 级总线。后续可以在核心外部增加总线适配器。
-  output logic imem_req_o,
-  output pc_t imem_addr_o,
-  input logic imem_gnt_i,
-  input logic imem_rvalid_i,
-  input instr_t imem_rdata_i,
+  // IF 只发起读事务，但边界仍暴露完整 AXI4-Lite master 总线。
+  // AW/W/B 通道由 IF stage 保持空闲。
+  output axi_lite_req_t imem_req_o,
+  input axi_lite_resp_t imem_resp_i,
 
   // ---------------------------------------------------------------------------
-  // 数据存储器接口
+  // AXI4-Lite 数据接口
   // ---------------------------------------------------------------------------
   //
-  // MEM stage 负责把流水线内的 mem_req_bus_t 转成这个外部接口。
-  // byte enable、读写方向和访问地址都由 MEM stage 统一约束。
-  output logic dmem_req_o,
-  output logic dmem_we_o,
-  output byte_en_t dmem_byte_en_o,
-  output word_t dmem_addr_o,
-  output word_t dmem_wdata_o,
-  input logic dmem_gnt_i,
-  input logic dmem_rvalid_i,
-  input word_t dmem_rdata_i,
+  // MEM stage 负责把流水线内的 mem_req_bus_t 转成完整 AXI4-Lite master
+  // 事务：load 使用 AR/R，store 使用 AW/W/B。
+  output axi_lite_req_t dmem_req_o,
+  input axi_lite_resp_t dmem_resp_i,
 
   // core_debug_o 是面向仿真环境的扁平退休追踪总线。
   // 当 core_debug_o.valid 为 1 时，表示 WB stage 本周期退休一条指令。
@@ -92,10 +83,7 @@ module riscv_core (
     .boot_pc_i(boot_pc_i),
     .redirect_i(redirect_bus),
     .imem_req_o(imem_req_o),
-    .imem_addr_o(imem_addr_o),
-    .imem_gnt_i(imem_gnt_i),
-    .imem_rvalid_i(imem_rvalid_i),
-    .imem_rdata_i(imem_rdata_i),
+    .imem_resp_i(imem_resp_i),
     .if_id_valid_o(if_id_valid),
     .if_id_ready_i(if_id_ready),
     .if_id_bus_o(if_id_bus)
@@ -134,13 +122,7 @@ module riscv_core (
     .ex_mem_ready_o(ex_mem_ready),
     .ex_mem_bus_i(ex_mem_bus),
     .dmem_req_o(dmem_req_o),
-    .dmem_we_o(dmem_we_o),
-    .dmem_byte_en_o(dmem_byte_en_o),
-    .dmem_addr_o(dmem_addr_o),
-    .dmem_wdata_o(dmem_wdata_o),
-    .dmem_gnt_i(dmem_gnt_i),
-    .dmem_rvalid_i(dmem_rvalid_i),
-    .dmem_rdata_i(dmem_rdata_i),
+    .dmem_resp_i(dmem_resp_i),
     .mem_wb_req_o(mem_wb_req),
     .mem_wb_valid_o(mem_wb_valid),
     .mem_wb_ready_i(mem_wb_ready),

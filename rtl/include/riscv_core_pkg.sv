@@ -22,6 +22,67 @@ package riscv_core_pkg;
   typedef logic [XLen-1:0] pc_t;
   typedef logic [RegAddrW-1:0] reg_addr_t;
   typedef logic [StrbW-1:0] byte_en_t;
+  typedef logic [2:0] axi_lite_prot_t;
+
+  typedef enum logic [1:0] {
+    AXI_RESP_OKAY = 2'b00,
+    AXI_RESP_EXOKAY = 2'b01,
+    AXI_RESP_SLVERR = 2'b10,
+    AXI_RESP_DECERR = 2'b11
+  } axi_lite_resp_e;
+
+  // ---------------------------------------------------------------------------
+  // AXI4-Lite 边界类型
+  // ---------------------------------------------------------------------------
+  //
+  // 这些 packed struct 参考 PULP axi/typedef.svh 中 AXI_LITE_TYPEDEF_* 宏
+  // 生成的字段组织方式：master 输出 req，slave 返回 resp。core 内部暂不
+  // 引入完整 axi IP 依赖，只保留与其 req/resp 风格接近的边界类型。
+
+  typedef struct packed {
+    word_t addr;
+    axi_lite_prot_t prot;
+  } axi_lite_aw_chan_t;
+
+  typedef struct packed {
+    word_t data;
+    byte_en_t strb;
+  } axi_lite_w_chan_t;
+
+  typedef struct packed {
+    axi_lite_resp_e resp;
+  } axi_lite_b_chan_t;
+
+  typedef struct packed {
+    word_t addr;
+    axi_lite_prot_t prot;
+  } axi_lite_ar_chan_t;
+
+  typedef struct packed {
+    word_t data;
+    axi_lite_resp_e resp;
+  } axi_lite_r_chan_t;
+
+  typedef struct packed {
+    axi_lite_aw_chan_t aw;
+    logic aw_valid;
+    axi_lite_w_chan_t w;
+    logic w_valid;
+    logic b_ready;
+    axi_lite_ar_chan_t ar;
+    logic ar_valid;
+    logic r_ready;
+  } axi_lite_req_t;
+
+  typedef struct packed {
+    logic aw_ready;
+    logic w_ready;
+    axi_lite_b_chan_t b;
+    logic b_valid;
+    logic ar_ready;
+    axi_lite_r_chan_t r;
+    logic r_valid;
+  } axi_lite_resp_t;
 
   // ---------------------------------------------------------------------------
   // RV32I 指令编码基础类型

@@ -14,16 +14,10 @@ module mem_stage (
   output logic ex_mem_ready_o,
   input ex_mem_bus_t ex_mem_bus_i,
 
-  // 数据存储器接口。这个接口是核心边界上的轻量级内存事务接口，后续可由
-  // 外部 adapter 转接到具体 SoC 总线。
-  output logic dmem_req_o,
-  output logic dmem_we_o,
-  output byte_en_t dmem_byte_en_o,
-  output word_t dmem_addr_o,
-  output word_t dmem_wdata_o,
-  input logic dmem_gnt_i,
-  input logic dmem_rvalid_i,
-  input word_t dmem_rdata_i,
+  // AXI4-Lite 数据接口。MEM stage 后续会把内部 mem_req_bus_t 转成
+  // load 的 AR/R 或 store 的 AW/W/B 事务。
+  output axi_lite_req_t dmem_req_o,
+  input axi_lite_resp_t dmem_resp_i,
 
   // MEM 产生的写回候选，用于 load 数据返回后的前递判断。
   output wb_req_bus_t mem_wb_req_o,
@@ -36,11 +30,17 @@ module mem_stage (
 
   // 占位实现：暂不发起真实数据访问，后续在此加入 LSU 状态机/FIFO。
   assign ex_mem_ready_o = mem_wb_ready_i;
-  assign dmem_req_o = 1'b0;
-  assign dmem_we_o = 1'b0;
-  assign dmem_byte_en_o = '0;
-  assign dmem_addr_o = '0;
-  assign dmem_wdata_o = '0;
+  assign dmem_req_o.aw.addr = '0;
+  assign dmem_req_o.aw.prot = 3'b000;
+  assign dmem_req_o.aw_valid = 1'b0;
+  assign dmem_req_o.w.data = '0;
+  assign dmem_req_o.w.strb = '0;
+  assign dmem_req_o.w_valid = 1'b0;
+  assign dmem_req_o.b_ready = 1'b0;
+  assign dmem_req_o.ar.addr = '0;
+  assign dmem_req_o.ar.prot = 3'b000;
+  assign dmem_req_o.ar_valid = 1'b0;
+  assign dmem_req_o.r_ready = 1'b0;
   assign mem_wb_req_o = '0;
   assign mem_wb_valid_o = 1'b0;
   assign mem_wb_bus_o = '0;
