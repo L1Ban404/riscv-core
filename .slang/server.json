@@ -1,6 +1,7 @@
 {
   "build": ".slang/riscv_core.f",
   "buildRelativePaths": false,
+  "flags": "-Wno-empty-output-connection",
   "builds": [
     {
       "name": "riscv_core",
@@ -9,7 +10,11 @@
   ],
   "index": [
     {
-      "dirs": ["rtl"],
+      "dirs": [
+        "rtl",
+        "third_party/ip/common_cells/src",
+        "third_party/ip/common_cells/include"
+      ],
       "excludeDirs": []
     }
   ]

@@ -6,6 +6,11 @@
 #
 # Do not reformat third-party IP under third_party/ip/.
 
+# Keep this narrower than the default so long positional macro calls expand
+# instead of packing many arguments onto the first line.
+# Verible has no macro-actual-argument policy knob; wrap hand-formatted
+# assertion macros with // verilog_format: off/on when every argument should
+# stay on its own line.
 --column_limit=100
 --indentation_spaces=2
 --wrap_spaces=4
