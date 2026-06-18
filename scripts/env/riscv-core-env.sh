@@ -3,7 +3,7 @@
 
 export RISCV_CORE_TOOLS="${RISCV_CORE_TOOLS:-$HOME/.local/riscv-core-tools}"
 export RISCV_CORE_OSS_CAD_SUITE="$RISCV_CORE_TOOLS/opt/oss-cad-suite/current"
-export RISCV_CORE_VERIBLE="$RISCV_CORE_TOOLS/opt/verible/current"
+export RISCV_CORE_SLANG_SERVER="$RISCV_CORE_TOOLS/opt/slang-server/current"
 export RISCV_CORE_RISCV_GNU_TOOLCHAIN="$RISCV_CORE_TOOLS/opt/riscv-gnu-toolchain/current"
 export RISCV="$RISCV_CORE_RISCV_GNU_TOOLCHAIN"
 export RISCV_CORE_COCOTB_VENV="$RISCV_CORE_TOOLS/python/cocotb-venv"
@@ -15,9 +15,28 @@ riscv_core_prepend_path() {
   esac
 }
 
+riscv_core_remove_path() {
+  new_path=
+  old_ifs=$IFS
+  IFS=:
+  for path_entry in $PATH; do
+    if [ "$path_entry" = "$1" ]; then
+      continue
+    fi
+    if [ -z "$new_path" ]; then
+      new_path=$path_entry
+    else
+      new_path=$new_path:$path_entry
+    fi
+  done
+  IFS=$old_ifs
+  PATH=$new_path
+}
+
+riscv_core_remove_path "$RISCV_CORE_TOOLS/opt/slang/current/bin"
 riscv_core_prepend_path "$RISCV_CORE_TOOLS/bin"
 riscv_core_prepend_path "$RISCV_CORE_OSS_CAD_SUITE/bin"
-riscv_core_prepend_path "$RISCV_CORE_VERIBLE/bin"
+riscv_core_prepend_path "$RISCV_CORE_SLANG_SERVER"
 riscv_core_prepend_path "$RISCV_CORE_RISCV_GNU_TOOLCHAIN/bin"
 
 if [ -d "$RISCV_CORE_COCOTB_VENV/bin" ]; then
@@ -26,4 +45,5 @@ if [ -d "$RISCV_CORE_COCOTB_VENV/bin" ]; then
 fi
 
 export PATH
+unset -f riscv_core_remove_path
 unset -f riscv_core_prepend_path
