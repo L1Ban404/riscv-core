@@ -1,1 +1,3 @@
 .slang/local/
+/sim/
+__pycache__/

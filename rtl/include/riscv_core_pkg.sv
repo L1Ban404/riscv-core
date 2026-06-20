@@ -49,9 +49,7 @@ package riscv_core_pkg;
     byte_en_t strb;
   } axi_lite_w_chan_t;
 
-  typedef struct packed {
-    axi_lite_resp_e resp;
-  } axi_lite_b_chan_t;
+  typedef struct packed {axi_lite_resp_e resp;} axi_lite_b_chan_t;
 
   typedef struct packed {
     word_t addr;

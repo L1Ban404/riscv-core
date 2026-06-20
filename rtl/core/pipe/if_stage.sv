@@ -51,8 +51,9 @@ module if_stage #(
   logic fetch_epoch_d;
 
   // AR holding register 使用 common_cells::fall_through_register。redirect 只
-  // 阻止新请求进入 holding register，已经 valid 的 AXI AR 请求必须保持到
-  // ar_ready，满足 AXI4-Lite valid 不能撤销的约束。
+  // 阻止新请求进入 holding register；如果请求已经在时钟沿被 AR 端采样
+  // 为 valid 且尚未 ready，fall-through register 会锁住它，满足
+  // AXI4-Lite valid 不能撤销的同步约束。
   fetch_req_t fetch_req_data;
   fetch_req_t ar_hold_data;
   logic ar_hold_ready;
@@ -201,7 +202,7 @@ module if_stage #(
     imem_req_o.ar_valid,
     imem_resp_i.ar_ready,
     imem_req_o.ar,
-    '0,
+    axi_lite_ar_chan_t'(0),
     clk_i,
     !rst_ni,
     "AXI4-Lite AR payload must remain stable while valid is waiting for ready."
