@@ -11,7 +11,8 @@
   "index": [
     {
       "dirs": [
-        "rtl",
+        "rtl/include",
+        "rtl/core",
         "third_party/ip/common_cells/src",
         "third_party/ip/common_cells/include"
       ],

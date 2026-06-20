@@ -1,5 +1,5 @@
--I rtl/include
--I third_party/ip/common_cells/include
+-Irtl/include
+-Ithird_party/ip/common_cells/include
 --top riscv_core
 rtl/include/riscv_core_pkg.sv
 third_party/ip/common_cells/src/fifo_v3.sv

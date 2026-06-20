@@ -67,7 +67,10 @@ def test_if_stage():
 
         runner.build(
             sources=sources,
-            includes=[repo_root / "third_party/ip/common_cells/include"],
+            includes=[
+                repo_root / "rtl/include",
+                repo_root / "third_party/ip/common_cells/include",
+            ],
             hdl_toplevel="if_stage_tb",
             build_dir=build_dir,
             build_args=build_args,
