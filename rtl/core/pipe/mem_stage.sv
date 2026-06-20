@@ -28,13 +28,37 @@ module mem_stage (
   output mem_wb_bus_t mem_wb_bus_o
 );
 
+  word_t aligned_store_data;
+  byte_en_t store_byte_en;
+
+  // Store lane 对齐属于 MEM 数据通路，不进入 EX 的 ALU/前递关键路径。
+  // 后续实现 LSU 状态机时，AW/W 请求寄存器直接锁存这两个结果。
+  always_comb begin
+    case (ex_mem_bus_i.mem_req.size)
+      MEM_SIZE_BYTE: begin
+        aligned_store_data = ex_mem_bus_i.mem_req.wdata <<
+                             (ex_mem_bus_i.mem_req.addr[1:0] * ByteW);
+        store_byte_en = byte_en_t'(4'b0001 << ex_mem_bus_i.mem_req.addr[1:0]);
+      end
+      MEM_SIZE_HALF: begin
+        aligned_store_data = ex_mem_bus_i.mem_req.wdata <<
+                             (ex_mem_bus_i.mem_req.addr[1:0] * ByteW);
+        store_byte_en = byte_en_t'(4'b0011 << ex_mem_bus_i.mem_req.addr[1:0]);
+      end
+      default: begin
+        aligned_store_data = ex_mem_bus_i.mem_req.wdata;
+        store_byte_en = '1;
+      end
+    endcase
+  end
+
   // 占位实现：暂不发起真实数据访问，后续在此加入 LSU 状态机/FIFO。
   assign ex_mem_ready_o = mem_wb_ready_i;
   assign dmem_req_o.aw.addr = '0;
   assign dmem_req_o.aw.prot = 3'b000;
   assign dmem_req_o.aw_valid = 1'b0;
-  assign dmem_req_o.w.data = '0;
-  assign dmem_req_o.w.strb = '0;
+  assign dmem_req_o.w.data = aligned_store_data;
+  assign dmem_req_o.w.strb = store_byte_en;
   assign dmem_req_o.w_valid = 1'b0;
   assign dmem_req_o.b_ready = 1'b0;
   assign dmem_req_o.ar.addr = '0;

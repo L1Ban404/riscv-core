@@ -99,8 +99,9 @@ typedef struct packed {
   mem_size_e size;
   logic sign_ext;
   word_t addr;
+  // store 的原始 rs2 数据；MEM 根据 addr[1:0] 和 size 生成 AXI lane
+  // 对齐后的 wdata/wstrb，避免把移位逻辑放在 EX 关键路径上。
   word_t wdata;
-  byte_en_t byte_en;
 } mem_req_bus_t;
 
 typedef struct packed {
@@ -115,5 +116,22 @@ typedef struct packed {
   reg_addr_t rd_addr;
   word_t wdata;
 } wb_req_bus_t;
+
+// Redirect 只冲刷尚未进入 EX 的年轻事务；已经进入 EX 及后续阶段的
+// 事务继续退休。该事务同时随 debug 总线记录分支执行结果。
+typedef enum logic [2:0] {
+  REDIR_NONE,
+  REDIR_BRANCH,
+  REDIR_JAL,
+  REDIR_JALR,
+  REDIR_TRAP,
+  REDIR_MRET
+} redirect_reason_e;
+
+typedef struct packed {
+  logic valid;
+  pc_t target_pc;
+  redirect_reason_e reason;
+} redirect_bus_t;
 
 `endif

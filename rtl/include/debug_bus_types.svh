@@ -18,8 +18,7 @@ typedef struct packed {
 
 typedef struct packed {
   id_debug_bus_t id_debug;
-  logic redirect_taken;
-  pc_t redirect_target_pc;
+  redirect_bus_t redirect;
   word_t alu_result;
 } ex_debug_bus_t;
 
@@ -41,8 +40,7 @@ typedef struct packed {
   fetch_bus_t fetch;
   reg_addr_bus_t reg_addr;
   decode_ctrl_bus_t ctrl;
-  logic redirect_taken;
-  pc_t redirect_target_pc;
+  redirect_bus_t redirect;
   word_t alu_result;
   mem_req_bus_t mem_req;
   mem_rsp_bus_t mem_rsp;

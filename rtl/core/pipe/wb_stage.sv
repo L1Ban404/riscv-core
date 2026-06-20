@@ -13,8 +13,8 @@ module wb_stage (
   output logic mem_wb_ready_o,
   input mem_wb_bus_t mem_wb_bus_i,
 
-  // 写回请求回送给 ID stage 内部未来的寄存器堆，同时也提供给 EX stage
-  // 作为最老一级的数据前递来源。
+  // 写回请求回送给 ID stage 内部的寄存器堆。EX 直接使用 MEM/WB 的
+  // 写回候选完成同一份数据的前递，不再重复接入 WB 输出。
   output wb_req_bus_t wb_req_o,
 
   // 扁平化退休追踪总线。仿真环境优先观察该端口，而不是逐层访问嵌套

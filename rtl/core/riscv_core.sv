@@ -64,18 +64,10 @@ module riscv_core (
   // 正是产生 redirect 的指令；IF 会在同周期屏蔽更年轻事务的 valid。
   redirect_bus_t redirect_bus;
 
-  // 写回请求同时承担两个角色：
-  // - WB stage 的 wb_req_bus 写回 ID stage 内部未来的寄存器堆。
-  // - EX/MEM/WB 不同年龄的写回请求提供给 EX stage 做数据前递判断。
-  wb_req_bus_t ex_wb_req;
+  // 写回请求同时承担寄存器堆写回和 MEM/WB 数据前递角色。EX/MEM 候选
+  // 由 EX stage 内部保存，不再经过顶层绕回。
   wb_req_bus_t mem_wb_req;
   wb_req_bus_t wb_wb_req;
-
-  forward_src_bus_t forward_src_bus;
-
-  assign forward_src_bus.ex_wb = ex_wb_req;
-  assign forward_src_bus.mem_wb = mem_wb_req;
-  assign forward_src_bus.wb_wb = wb_wb_req;
 
   if_stage u_if_stage (
     .clk_i(clk_i),
@@ -107,9 +99,8 @@ module riscv_core (
     .id_ex_valid_i(id_ex_valid),
     .id_ex_ready_o(id_ex_ready),
     .id_ex_bus_i(id_ex_bus),
-    .forward_src_i(forward_src_bus),
+    .mem_wb_req_i(mem_wb_req),
     .redirect_o(redirect_bus),
-    .ex_wb_req_o(ex_wb_req),
     .ex_mem_valid_o(ex_mem_valid),
     .ex_mem_ready_i(ex_mem_ready),
     .ex_mem_bus_o(ex_mem_bus)
