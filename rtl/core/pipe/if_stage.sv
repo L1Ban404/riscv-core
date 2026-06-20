@@ -61,7 +61,8 @@ module if_stage #(
   logic fetch_req_fire;
 
   // PC FIFO 由 common_cells::stream_fifo 实现，记录已经完成 AR 握手、
-  // 但尚未收到 R 响应的请求 PC 及其 epoch。redirect 翻转 epoch。
+  // 但尚未收到 R 响应的请求 PC 及其 epoch。它使用 fall-through 模式，
+  // 支持无延迟存储器在 AR 握手同周期给出对应 R 响应。redirect 翻转 epoch。
   // 这里使用 1 bit epoch 的前提是：IF 只使用单条 AXI4-Lite 读流，响应
   // 必须严格按 AR 握手顺序返回；redirect 只来自 EX，下一次 redirect 必须
   // 等新路径指令返回并进入 EX 后才可能发生。因此在 epoch 再次翻转前，
@@ -136,7 +137,7 @@ module if_stage #(
   );
 
   stream_fifo #(
-    .FALL_THROUGH(1'b0),
+    .FALL_THROUGH(1'b1),
     .DEPTH(FetchOutstandingDepth),
     .T(fetch_req_t)
   ) u_pc_fifo (
