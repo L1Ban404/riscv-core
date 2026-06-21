@@ -12,22 +12,21 @@ module riscv_core (
   input pc_t boot_pc_i,
 
   // ---------------------------------------------------------------------------
-  // AXI4-Lite 取指接口
+  // CoreBus 取指接口
   // ---------------------------------------------------------------------------
   //
-  // IF 只发起读事务，但边界仍暴露完整 AXI4-Lite master 总线。
-  // AW/W/B 通道由 IF stage 保持空闲。
-  output axi_lite_req_t imem_req_o,
-  input axi_lite_resp_t imem_resp_i,
+  // IF 只发起 wstrb=0 的固定字宽读事务。
+  output core_bus_req_t imem_req_o,
+  input core_bus_resp_t imem_resp_i,
 
   // ---------------------------------------------------------------------------
-  // AXI4-Lite 数据接口
+  // CoreBus 数据接口
   // ---------------------------------------------------------------------------
   //
-  // MEM stage 负责把流水线内的 mem_req_bus_t 转成完整 AXI4-Lite master
-  // 事务：load 使用 AR/R，store 使用 AW/W/B。
-  output axi_lite_req_t dmem_req_o,
-  input axi_lite_resp_t dmem_resp_i,
+  // MEM stage 负责把流水线访存转换为统一的顺序 CoreBus 请求。CoreBus
+  // 每周期最多接受一个读或写请求，并允许多个请求 outstanding。
+  output core_bus_req_t dmem_req_o,
+  input core_bus_resp_t dmem_resp_i,
 
   // core_debug_o 是面向仿真环境的扁平退休追踪总线。
   // 当 core_debug_o.valid 为 1 时，表示 WB stage 本周期退休一条指令。

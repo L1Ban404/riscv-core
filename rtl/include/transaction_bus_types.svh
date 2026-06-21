@@ -7,59 +7,6 @@
 `include "riscv_core_config.svh"
 `include "riscv_isa_config.svh"
 
-// AXI4-Lite 边界类型。master 输出 req，slave 返回 resp。
-typedef logic [2:0] axi_lite_prot_t;
-
-typedef enum logic [1:0] {
-  AXI_RESP_OKAY = 2'b00,
-  AXI_RESP_EXOKAY = 2'b01,
-  AXI_RESP_SLVERR = 2'b10,
-  AXI_RESP_DECERR = 2'b11
-} axi_lite_resp_e;
-
-typedef struct packed {
-  word_t addr;
-  axi_lite_prot_t prot;
-} axi_lite_aw_chan_t;
-
-typedef struct packed {
-  word_t data;
-  byte_en_t strb;
-} axi_lite_w_chan_t;
-
-typedef struct packed {axi_lite_resp_e resp;} axi_lite_b_chan_t;
-
-typedef struct packed {
-  word_t addr;
-  axi_lite_prot_t prot;
-} axi_lite_ar_chan_t;
-
-typedef struct packed {
-  word_t data;
-  axi_lite_resp_e resp;
-} axi_lite_r_chan_t;
-
-typedef struct packed {
-  axi_lite_aw_chan_t aw;
-  logic aw_valid;
-  axi_lite_w_chan_t w;
-  logic w_valid;
-  logic b_ready;
-  axi_lite_ar_chan_t ar;
-  logic ar_valid;
-  logic r_ready;
-} axi_lite_req_t;
-
-typedef struct packed {
-  logic aw_ready;
-  logic w_ready;
-  axi_lite_b_chan_t b;
-  logic b_valid;
-  logic ar_ready;
-  axi_lite_r_chan_t r;
-  logic r_valid;
-} axi_lite_resp_t;
-
 // 可复用于阶段边界的事务级子总线。valid/ready 一般属于模块或 FIFO
 // 控制；只有“请求是否存在”本身有语义的 payload 才内含 valid。
 typedef struct packed {
@@ -99,13 +46,14 @@ typedef struct packed {
   mem_size_e size;
   logic sign_ext;
   word_t addr;
-  // store 的原始 rs2 数据；MEM 根据 addr[1:0] 和 size 生成 AXI lane
+  // store 的原始 rs2 数据；MEM 根据 addr[1:0] 和 size 生成 CoreBus lane
   // 对齐后的 wdata/wstrb，避免把移位逻辑放在 EX 关键路径上。
   word_t wdata;
 } mem_req_bus_t;
 
 typedef struct packed {
   logic valid;
+  logic error;
   word_t rdata;
 } mem_rsp_bus_t;
 

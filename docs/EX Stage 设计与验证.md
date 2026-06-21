@@ -19,7 +19,7 @@ EX/MEM 握手协议，以及对应的模块级 cocotb 验证方案。
 - 通过单入口 ready/valid 寄存器将结果交给 MEM。
 - 生成随指令继续流动的 EX debug payload。
 
-EX 不负责 AXI 数据事务、load 数据提取、store lane 对齐、最终寄存器堆写入或
+EX 不负责 CoreBus 数据事务、load 数据提取、store lane 对齐、最终寄存器堆写入或
 指令退休。这些职责分别属于 MEM 和 WB。
 
 ## 数据通路
@@ -275,7 +275,7 @@ EX 只形成访存的架构语义：
 | `addr` | ALU 计算的有效地址。 |
 | `wdata` | 前递后的原始 rs2 数据。 |
 
-EX 不对 store 数据做 byte lane 移位，也不生成 AXI `wstrb`。MEM 根据地址低位
+EX 不对 store 数据做 byte lane 移位，也不生成 CoreBus `wstrb`。MEM 根据地址低位
 和访问大小生成 lane-aligned `wdata/wstrb`，从而缩短以下 EX 关键路径：
 
 ```text
@@ -465,10 +465,10 @@ FST 和 VCD 两种波形模式均已实际运行并生成对应文件。Slang/Yo
 
 ## 已知限制
 
-- MEM Stage 尚未完成，真实 AXI load/store 时序和返回数据前递仍需在 MEM
+- MEM Stage 尚未完成，真实 CoreBus load/store 时序和返回数据前递仍需在 MEM
   模块级验证中覆盖。
 - 非对齐 load/store 的异常策略尚未实现；当前 EX 只传递原始地址和访问大小。
-- AXI 错误响应、非法指令、访问错误和地址错误尚未连接 trap 通路。
+- CoreBus 错误响应、非法指令、访问错误和地址错误尚未连接 trap 通路。
 - 当前没有分支预测，taken branch 和 jump 在 EX 才 redirect。
 - RV32M 乘除法及多周期执行单元尚未实现。
 - `PC+4` 使用独立常数增量器；后续应结合综合时序和面积报告判断是否需要进一步

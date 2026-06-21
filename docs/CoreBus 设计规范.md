@@ -1,0 +1,152 @@
+# CoreBus 设计规范
+
+CoreBus 是 CPU Core 与指令存储器、数据存储器或一级 cache 之间的轻量级
+顺序事务接口。它不直接承担 SoC 互连协议的职责；需要连接外部互连时，应在
+CoreBus 之外实现独立适配器。
+
+## 设计目标
+
+- 每周期最多接受一个读请求或写请求，与单发射流水线和单端口 cache lookup 匹配。
+- 允许多个请求 outstanding，用流水请求隐藏存储器或 cache 延迟。
+- 所有响应严格按照请求接受顺序返回，不使用事务 ID。
+- 请求和响应各使用一组 ready/valid，支持双向独立背压。
+- 固定传输一个 `word_t`，不在总线上重复携带 ISA 的 load/store size。
+- 用 byte write strobe 同时表达读写类型和写入 lane，减少重复控制字段。
+
+## 类型
+
+类型定义位于 `rtl/include/core_bus_types.svh`：
+
+```systemverilog
+typedef struct packed {
+  word_t addr;
+  word_t wdata;
+  byte_en_t wstrb;
+} core_bus_req_chan_t;
+
+typedef struct packed {
+  word_t rdata;
+  logic error;
+} core_bus_rsp_chan_t;
+
+typedef struct packed {
+  core_bus_req_chan_t req;
+  logic req_valid;
+  logic rsp_ready;
+} core_bus_req_t;
+
+typedef struct packed {
+  logic req_ready;
+  core_bus_rsp_chan_t rsp;
+  logic rsp_valid;
+} core_bus_resp_t;
+```
+
+`core_bus_req_t` 是 master 到 slave 的方向，`core_bus_resp_t` 是 slave 到
+master 的方向。将请求 valid 和响应 ready 放在同一个 master 输出结构中，可以
+让顶层端口保持紧凑，同时仍然保留两条独立握手流。
+
+## 请求编码
+
+`wstrb` 同时编码操作类型和有效写入 lane：
+
+| `wstrb` | 事务语义 |
+| --- | --- |
+| 全 0 | 读取 `addr` 所在的完整总线字。 |
+| 非 0 | 按置位的 byte lane 写入 `wdata`。 |
+
+读请求必须把 `wdata` 驱动为 0，避免无意义的组合翻转。写请求不允许使用全 0
+`wstrb`；“不发起事务”由 `req_valid=0` 表达。
+
+当前 CoreBus 数据宽度等于 `word_t`。master 应输出按总线字对齐的地址；原始有效
+地址低位由 MEM 的请求元数据保留，用于 load 数据提取、store lane 生成、非对齐
+检查和异常报告。
+
+以 32-bit CoreBus 为例：
+
+| 指令语义 | 有效地址低位 | CoreBus 地址 | `wstrb` | `wdata` |
+| --- | ---: | --- | --- | --- |
+| word read | `00` | 原地址 | `0000` | 0 |
+| byte read | 任意 | 向下对齐地址 | `0000` | 0 |
+| byte write | `01` | 向下对齐地址 | `0010` | 原数据左移 8 |
+| half write | `10` | 向下对齐地址 | `1100` | 原数据左移 16 |
+| word write | `00` | 原地址 | `1111` | 原数据 |
+
+跨越总线字边界的 half/word 访问不能静默截断。当前实现应使用断言捕获；异常通路
+完成后应转换为对应的地址非对齐异常。
+
+## 握手与稳定性
+
+请求在以下条件成立的时钟沿被接受：
+
+```systemverilog
+req_fire = req_valid && req_ready;
+```
+
+响应在以下条件成立的时钟沿被接受：
+
+```systemverilog
+rsp_fire = rsp_valid && rsp_ready;
+```
+
+协议必须满足：
+
+1. `req_valid=1 && req_ready=0` 时，master 保持 `req_valid` 和 `req` 稳定。
+2. `rsp_valid=1 && rsp_ready=0` 时，slave 保持 `rsp_valid` 和 `rsp` 稳定。
+3. 每个被接受的请求必须产生且只产生一个响应，写请求也不例外。
+4. 响应顺序必须与请求接受顺序完全一致，读写共享同一个全局顺序。
+5. slave 不得在没有对应请求的情况下产生响应。
+6. 允许请求握手的同一周期产生对应响应。
+
+写响应的 `rdata` 应驱动为 0。`error=1` 表示该请求发生访问错误；在异常通路
+完成前，各 master 至少应保存或记录错误，不能把错误响应误配给其它请求。
+
+## Outstanding 与流控
+
+CoreBus 不携带事务 ID，因此通过严格顺序响应匹配请求元数据。master 可以用 FIFO
+记录每个已接受请求的信息：
+
+```text
+request metadata FIFO head <-> next CoreBus response
+```
+
+FIFO 满时，master 停止分配新请求。响应端若暂时不能保存结果，可以拉低
+`rsp_ready`，由 slave 保持响应。协议本身不规定最大 outstanding 数量，实际深度由
+master、slave 和系统集成参数共同限制。
+
+## IF 使用规则
+
+IF 只发出读请求：
+
+- `wdata=0`。
+- `wstrb=0`。
+- `addr` 为对齐的取指 PC。
+
+IF 用 PC/epoch FIFO 将顺序响应重新组合为 `{pc, instr}`。redirect 不能取消已经
+被接受的请求；旧路径响应仍需被消费，再根据 epoch 丢弃。
+
+## MEM 与 D-cache 使用规则
+
+MEM 负责在 CoreBus 边界之前完成：
+
+- 地址对齐和非对齐检查。
+- store 数据 lane 移位及 `wstrb` 生成。
+- 保存 load 的原始地址低位、size 和符号扩展属性。
+- 保存所有 outstanding 请求的退休与数据相关元数据。
+
+D-cache 对 core 侧必须保持顺序响应。第一版可以采用阻塞 cache 或少量顺序
+outstanding；若未来需要让年轻 hit 越过较老 miss 返回，应扩展带事务 ID 的协议，
+而不是破坏当前 CoreBus 的顺序契约。
+
+## 断言与验证要求
+
+每个 CoreBus master 至少应断言请求等待期间 payload 和 valid 稳定；每个 slave
+至少应断言响应等待期间 payload 和 valid 稳定。模块级测试应覆盖：
+
+- 请求端持续和随机背压。
+- 响应端持续和随机背压。
+- 多个 outstanding 请求与严格顺序响应。
+- 请求握手同周期响应。
+- 连续读、连续写以及读写交替。
+- error 响应。
+- FIFO 满、空和同周期 push/pop。

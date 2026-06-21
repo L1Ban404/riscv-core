@@ -132,9 +132,10 @@ end
 - `riscv_core_pkg.sv` 只负责按依赖顺序聚合以下分片，设计模块仍统一导入 `riscv_core_pkg`：
   - `riscv_core_config.svh`：内核参数和基础数据类型。
   - `riscv_isa_config.svh`：RISC-V 指令编码及译码控制语义。
-  - `transaction_bus_types.svh`：AXI4-Lite 和可复用事务级结构体总线。
+  - `core_bus_types.svh`：CoreBus 请求、响应和双向握手结构体。
+  - `transaction_bus_types.svh`：redirect 和可复用事务级结构体总线。
   - `debug_bus_types.svh`：各级 debug/retire 结构体总线。
-  - `pipeline_bus_types.svh`：流水线 payload、redirect 和数据前递类型。
+  - `pipeline_bus_types.svh`：各流水级边界 payload 类型。
 - 不要使用包来隐藏模块局部的实现细节。
 
 对于小型模块可接受：
