@@ -16,9 +16,17 @@ VERILATOR_BUILD_ARGS = [
 ]
 
 DEPTH_CONFIGS = [
-    ("fetch4_ifq2", {"FetchOutstandingDepth": 4, "IfIdQueueDepth": 2}, None),
-    ("fetch1_ifq1", {"FetchOutstandingDepth": 1, "IfIdQueueDepth": 1}, "parameterized_depth_smoke"),
-    ("fetch4_ifq1", {"FetchOutstandingDepth": 4, "IfIdQueueDepth": 1}, "parameterized_depth_smoke"),
+    ("fetch1_ifq2", {"FetchOutstandingDepth": 1, "IfIdQueueDepth": 2}, None),
+    (
+        "fetch1_ifq1",
+        {"FetchOutstandingDepth": 1, "IfIdQueueDepth": 1},
+        "parameterized_depth_smoke",
+    ),
+    (
+        "fetch4_ifq1",
+        {"FetchOutstandingDepth": 4, "IfIdQueueDepth": 1},
+        "parameterized_depth_smoke",
+    ),
 ]
 
 

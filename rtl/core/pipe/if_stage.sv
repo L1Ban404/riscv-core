@@ -9,7 +9,7 @@ import riscv_core_pkg::*;
 module if_stage #(
   // 取指前端允许同时挂起的 CoreBus 读请求数。这个深度主要吸收外部
   // 指令存储器延迟，越大越能保持请求端不断流。
-  parameter int unsigned FetchOutstandingDepth = 4,
+  parameter int unsigned FetchOutstandingDepth = 1,
   // IF -> ID 已返回指令队列深度。这个深度主要吸收 ID stage 的短暂停顿，
   // 不需要和 outstanding 请求深度相同。
   parameter int unsigned IfIdQueueDepth = 2

@@ -141,9 +141,11 @@ async def send_responses_for_pcs(dut, pcs):
 
 def check_fetch_outputs(dut, expected_fetches, context=""):
     if int(dut.if_id_valid_o.value) and int(dut.if_id_ready_i.value):
-        assert expected_fetches, "IF/ID produced an unexpected fetch"
-        expected_pc = expected_fetches.popleft()
         got_pc = int(dut.if_id_pc_o.value)
+        assert expected_fetches, (
+            f"{context}: IF/ID produced unexpected pc 0x{got_pc:08x}"
+        )
+        expected_pc = expected_fetches.popleft()
         got_instr = int(dut.if_id_instr_o.value)
         assert got_pc == expected_pc, (
             f"{context}: expected pc 0x{expected_pc:08x}, got 0x{got_pc:08x}"
@@ -151,54 +153,6 @@ def check_fetch_outputs(dut, expected_fetches, context=""):
         assert got_instr == instr_for_pc(expected_pc)
         assert int(dut.if_id_debug_pc_o.value) == expected_pc
         assert int(dut.if_id_debug_instr_o.value) == instr_for_pc(expected_pc)
-
-
-async def send_and_collect_fetches(dut, pcs, fetch_count=None):
-    expected_count = len(pcs) if fetch_count is None else fetch_count
-    remaining_responses = deque(pcs)
-    current_pc = None
-    got = []
-
-    dut.if_id_ready_i.value = 1
-
-    for _ in range(1000):
-        await ReadWrite()
-
-        if current_pc is None and remaining_responses:
-            current_pc = remaining_responses.popleft()
-
-        if current_pc is None:
-            dut.imem_rsp_valid_i.value = 0
-            dut.imem_rsp_rdata_i.value = 0
-        else:
-            dut.imem_rsp_valid_i.value = 1
-            dut.imem_rsp_rdata_i.value = instr_for_pc(current_pc)
-            dut.imem_rsp_error_i.value = 0
-
-        await ReadOnly()
-        rsp_fire = int(dut.imem_rsp_valid_i.value) and int(dut.imem_rsp_ready_o.value)
-        if_id_fire = int(dut.if_id_valid_o.value) and int(dut.if_id_ready_i.value)
-
-        if if_id_fire:
-            pc = int(dut.if_id_pc_o.value)
-            instr = int(dut.if_id_instr_o.value)
-            debug_pc = int(dut.if_id_debug_pc_o.value)
-            debug_instr = int(dut.if_id_debug_instr_o.value)
-            assert debug_pc == pc
-            assert debug_instr == instr
-            got.append((pc, instr))
-
-        await RisingEdge(dut.clk_i)
-        await NextTimeStep()
-
-        if rsp_fire:
-            current_pc = None
-        if len(got) == expected_count:
-            dut.imem_rsp_valid_i.value = 0
-            dut.imem_rsp_rdata_i.value = 0
-            return got
-
-    raise AssertionError(f"Timed out waiting for {expected_count} IF/ID handshakes")
 
 
 async def collect_fetches(dut, count):
@@ -233,11 +187,17 @@ async def reset_boot_and_basic_fetch(dut):
     boot_pc = 0x8000_0000
     await reset_dut(dut, boot_pc)
 
-    pcs = await accept_requests(dut, 4)
-    assert pcs == [boot_pc + 4 * i for i in range(4)]
+    pcs = []
+    got = []
+    for _ in range(4):
+        pc = (await accept_requests(dut, 1))[0]
+        pcs.append(pc)
+        await send_responses_for_pcs(dut, [pc])
+        got.extend(await collect_fetches(dut, 1))
 
-    got = await send_and_collect_fetches(dut, pcs)
-    assert got == [(pc, instr_for_pc(pc)) for pc in pcs]
+    expected_pcs = [boot_pc + 4 * i for i in range(4)]
+    assert pcs == expected_pcs
+    assert got == [(pc, instr_for_pc(pc)) for pc in expected_pcs]
 
 
 @cocotb.test()
@@ -246,15 +206,61 @@ async def request_valid_and_payload_hold_under_backpressure(dut):
     boot_pc = 0x8000_1000
     await reset_dut(dut, boot_pc)
 
-    pcs = await accept_requests(
-        dut,
-        3,
-        ready_pattern=lambda cycle: cycle in (4, 8, 9),
-        check_stable=True,
-    )
-    assert pcs[0] == boot_pc
-    assert pcs[1] == boot_pc + 4
-    assert pcs[2] == boot_pc + 8
+    pcs = []
+    for _ in range(3):
+        pc = (
+            await accept_requests(
+                dut,
+                1,
+                ready_pattern=lambda cycle: cycle == 4,
+                check_stable=True,
+            )
+        )[0]
+        pcs.append(pc)
+        await send_responses_for_pcs(dut, [pc])
+
+    assert pcs == [boot_pc + 4 * i for i in range(3)]
+
+
+@cocotb.test()
+async def single_outstanding_blocks_next_request_until_response(dut):
+    await start_clock(dut)
+    boot_pc = 0x8000_1800
+    await reset_dut(dut, boot_pc)
+
+    first_pc = (await accept_requests(dut, 1))[0]
+    assert first_pc == boot_pc
+
+    # 深度为 1 的 PC FIFO 已保存 PC0。在响应返回之前，即使请求端 ready
+    # 持续为 1，也不能接受或展示 PC1 请求。
+    dut.imem_req_ready_i.value = 1
+    for _ in range(4):
+        await ReadOnly()
+        assert int(dut.imem_req_valid_o.value) == 0
+        await RisingEdge(dut.clk_i)
+        await NextTimeStep()
+
+    # stream_fifo 满时不允许同周期 pop/push，因此 PC0 响应握手周期仍然
+    # 不应出现 PC1 请求；PC1 从下一周期开始可见。
+    dut.imem_rsp_rdata_i.value = instr_for_pc(first_pc)
+    dut.imem_rsp_error_i.value = 0
+    dut.imem_rsp_valid_i.value = 1
+    await ReadOnly()
+    assert int(dut.imem_rsp_ready_o.value) == 1
+    assert int(dut.imem_req_valid_o.value) == 0
+    await RisingEdge(dut.clk_i)
+    await NextTimeStep()
+    dut.imem_rsp_valid_i.value = 0
+
+    await ReadOnly()
+    assert int(dut.imem_req_valid_o.value) == 1
+    assert int(dut.imem_req_addr_o.value) == boot_pc + 4
+    second_pc = int(dut.imem_req_addr_o.value)
+    await RisingEdge(dut.clk_i)
+    await NextTimeStep()
+    dut.imem_req_ready_i.value = 0
+    assert second_pc == boot_pc + 4
+    await send_responses_for_pcs(dut, [second_pc])
 
 
 @cocotb.test()
@@ -263,42 +269,54 @@ async def zero_latency_memory_response(dut):
     boot_pc = 0x8000_2000
     await reset_dut(dut, boot_pc)
 
-    pending = deque()
-    got = []
+    expected_fetches = deque()
+    accepted_pcs = []
+    handshake_cycles = []
     dut.if_id_ready_i.value = 1
     dut.imem_req_ready_i.value = 1
 
-    for _ in range(40):
+    for cycle in range(40):
         await ReadWrite()
 
+        accept_more = len(accepted_pcs) < 6
+        dut.imem_req_ready_i.value = int(accept_more)
         req_valid = int(dut.imem_req_valid_o.value)
-        req_ready = int(dut.imem_req_ready_i.value)
-        if req_valid and req_ready:
-            pending.append(int(dut.imem_req_addr_o.value))
-
-        if pending:
-            pc = pending[0]
+        req_pc = int(dut.imem_req_addr_o.value)
+        if accept_more and req_valid:
+            # 直接根据本周期请求产生本周期响应，不经过软件 pending 队列。
+            # 这精确建模寄存器 L0 instruction buffer 的组合命中路径。
+            pc = req_pc
             dut.imem_rsp_rdata_i.value = instr_for_pc(pc)
             dut.imem_rsp_valid_i.value = 1
         else:
             dut.imem_rsp_valid_i.value = 0
+            dut.imem_rsp_rdata_i.value = 0
 
         await ReadOnly()
+        req_fire = req_valid and int(dut.imem_req_ready_i.value)
         rsp_fire = int(dut.imem_rsp_valid_i.value) and int(dut.imem_rsp_ready_o.value)
-        if_id_fire = int(dut.if_id_valid_o.value) and int(dut.if_id_ready_i.value)
-        if if_id_fire:
-            got.append((int(dut.if_id_pc_o.value), int(dut.if_id_instr_o.value)))
+
+        # 空的 fall-through PC FIFO 必须让同一笔请求和响应在同周期完成。
+        assert req_fire == rsp_fire
+        if req_fire:
+            accepted_pcs.append(req_pc)
+            expected_fetches.append(req_pc)
+            handshake_cycles.append(cycle)
+
+        check_fetch_outputs(dut, expected_fetches, f"zero-latency cycle={cycle}")
 
         await RisingEdge(dut.clk_i)
         await NextTimeStep()
 
-        if rsp_fire:
-            pending.popleft()
-        if len(got) == 4:
+        if len(accepted_pcs) >= 6 and not expected_fetches:
             break
 
-    expected_pcs = [boot_pc + 4 * i for i in range(4)]
-    assert got == [(pc, instr_for_pc(pc)) for pc in expected_pcs]
+    expected_pcs = [boot_pc + 4 * i for i in range(6)]
+    assert accepted_pcs == expected_pcs
+    assert all(
+        later == earlier + 1
+        for earlier, later in zip(handshake_cycles, handshake_cycles[1:])
+    ), "zero-latency L0 hits must sustain one request/response handshake per cycle"
 
 
 @cocotb.test()
@@ -307,22 +325,45 @@ async def if_id_backpressure_preserves_fetch_order(dut):
     boot_pc = 0x8000_3000
     await reset_dut(dut, boot_pc)
 
-    pcs = await accept_requests(dut, 4)
     dut.if_id_ready_i.value = 0
-    await send_responses_for_pcs(dut, pcs[:2])
+    pcs = []
+    for _ in range(2):
+        pc = (await accept_requests(dut, 1))[0]
+        pcs.append(pc)
+        await send_responses_for_pcs(dut, [pc])
 
-    dut.imem_rsp_rdata_i.value = instr_for_pc(pcs[2])
+        await ReadOnly()
+        assert int(dut.if_id_valid_o.value) == 1
+        assert int(dut.if_id_pc_o.value) == pcs[0]
+        await RisingEdge(dut.clk_i)
+        await NextTimeStep()
+
+    third_pc = (await accept_requests(dut, 1))[0]
+    pcs.append(third_pc)
+
+    dut.imem_rsp_rdata_i.value = instr_for_pc(third_pc)
     dut.imem_rsp_error_i.value = 0
     dut.imem_rsp_valid_i.value = 1
     await wait_cycles(dut, 5)
     await ReadOnly()
     assert int(dut.imem_rsp_ready_o.value) == 0
     await RisingEdge(dut.clk_i)
-    await NextTimeStep()
-    dut.imem_rsp_valid_i.value = 0
+    await ReadWrite()
+    dut.if_id_ready_i.value = 1
 
-    got = await send_and_collect_fetches(dut, pcs[2:], fetch_count=4)
-    assert got == [(pc, instr_for_pc(pc)) for pc in pcs]
+    expected_fetches = deque(pcs)
+    for _ in range(20):
+        await ReadOnly()
+        rsp_fire = int(dut.imem_rsp_valid_i.value) and int(dut.imem_rsp_ready_o.value)
+        check_fetch_outputs(dut, expected_fetches, "IF/ID backpressure release")
+        await RisingEdge(dut.clk_i)
+        await NextTimeStep()
+        if rsp_fire:
+            dut.imem_rsp_valid_i.value = 0
+        if not expected_fetches:
+            break
+
+    assert not expected_fetches
 
 
 @cocotb.test()
@@ -332,7 +373,7 @@ async def redirect_discards_old_outstanding_responses(dut):
     target_pc = 0x8000_8000
     await reset_dut(dut, boot_pc)
 
-    old_pcs = await accept_requests(dut, 3)
+    old_pc = (await accept_requests(dut, 1))[0]
 
     dut.redirect_target_pc_i.value = target_pc
     dut.redirect_valid_i.value = 1
@@ -340,28 +381,21 @@ async def redirect_discards_old_outstanding_responses(dut):
     await NextTimeStep()
     dut.redirect_valid_i.value = 0
 
-    # fall-through request hold 下，redirect 同周期的组合新请求可以被取消；
-    # 但如果已有旧请求实际完成握手，它的响应应由 epoch 机制丢弃。
-    first_after_redirect = (await accept_requests(dut, 1))[0]
-    stale_pcs = []
-    new_pcs = []
-    if first_after_redirect == target_pc:
-        new_pcs.append(first_after_redirect)
-    else:
-        stale_pcs.append(first_after_redirect)
-        assert first_after_redirect == old_pcs[-1] + 4
-
-    await send_responses_for_pcs(dut, old_pcs + stale_pcs)
+    # 单 outstanding 下，旧请求返回之前不能发出目标路径请求。旧响应仍需
+    # 被消费，并由 epoch 机制丢弃。
+    await ReadOnly()
+    assert int(dut.imem_req_valid_o.value) == 0
+    await RisingEdge(dut.clk_i)
+    await NextTimeStep()
+    await send_responses_for_pcs(dut, [old_pc])
     await wait_cycles(dut, 3)
     assert int(dut.if_id_valid_o.value) == 0
 
-    while len(new_pcs) < 2:
-        new_pcs.extend(await accept_requests(dut, 1))
-    assert new_pcs[0] == target_pc
-    assert new_pcs[1] == target_pc + 4
-
-    got = await send_and_collect_fetches(dut, new_pcs)
-    assert got == [(pc, instr_for_pc(pc)) for pc in new_pcs]
+    new_pc = (await accept_requests(dut, 1))[0]
+    assert new_pc == target_pc
+    await send_responses_for_pcs(dut, [new_pc])
+    got = await collect_fetches(dut, 1)
+    assert got == [(new_pc, instr_for_pc(new_pc))]
 
 
 @cocotb.test()
@@ -454,6 +488,8 @@ async def randomized_ready_redirect_smoke(dut):
             not outstanding
             and not expected_fetches
             and int(dut.if_id_valid_o.value) == 0
+            and int(dut.imem_req_valid_o.value) == 0
+            and int(dut.redirect_valid_i.value) == 0
         )
         redirect = can_redirect and rng.randrange(100) < 6
 
@@ -485,12 +521,12 @@ async def randomized_ready_redirect_smoke(dut):
             expected_fetches,
             (
                 f"cycle={cycle} redirect={int(redirect)} "
-                f"outstanding={[hex(pc) + ':' + str(epoch) for pc, epoch in outstanding]} "
-                f"expected={[hex(pc) for pc in expected_fetches]}"
+                f"outstanding={list(outstanding)} expected={list(expected_fetches)}"
             ),
         )
 
         if req_fire:
+            assert len(outstanding) < 1, "depth-1 IF accepted a second outstanding request"
             assert int(dut.imem_req_wdata_o.value) == 0
             assert int(dut.imem_req_wstrb_o.value) == 0
             outstanding.append((req_addr, active_epoch))

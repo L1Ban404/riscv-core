@@ -4,7 +4,7 @@
 import riscv_core_pkg::*;
 
 module if_stage_tb #(
-  parameter int unsigned FetchOutstandingDepth = 4,
+  parameter int unsigned FetchOutstandingDepth = 1,
   parameter int unsigned IfIdQueueDepth = 2
 ) (
   input logic clk_i,
