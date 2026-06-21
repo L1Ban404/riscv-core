@@ -37,9 +37,6 @@ module mem_stage #(
 
   word_t aligned_store_data;
   byte_en_t store_byte_en;
-  logic [4:0] store_shift_amount;
-  logic [4:0] load_shift_amount;
-  word_t shifted_load_data;
   word_t loaded_data;
 
   ex_mem_bus_t outstanding_head;
@@ -49,7 +46,7 @@ module mem_stage #(
   logic outstanding_head_valid;
 
   logic memory_instruction;
-  logic outstanding_push_valid;
+  logic outstanding_input_valid;
   logic dmem_req_valid;
   logic dmem_rsp_ready;
   logic dmem_rsp_fire;
@@ -60,30 +57,15 @@ module mem_stage #(
   logic mem_wb_input_valid;
   logic mem_wb_input_ready;
 
-  // Store lane 对齐属于 MEM 数据通路，不进入 EX 的 ALU/前递关键路径。
-  // 后续实现 LSU 队列时，请求 FIFO 直接锁存这两个结果。
-  assign store_shift_amount = {ex_mem_bus_i.mem_req.addr[1:0], 3'b000};
-
-  always_comb begin
-    case (ex_mem_bus_i.mem_req.size)
-      MEM_SIZE_BYTE: begin
-        aligned_store_data = ex_mem_bus_i.mem_req.wdata << store_shift_amount;
-        store_byte_en = byte_en_t'(4'b0001 << ex_mem_bus_i.mem_req.addr[1:0]);
-      end
-      MEM_SIZE_HALF: begin
-        aligned_store_data = ex_mem_bus_i.mem_req.wdata << store_shift_amount;
-        store_byte_en = byte_en_t'(4'b0011 << ex_mem_bus_i.mem_req.addr[1:0]);
-      end
-      MEM_SIZE_WORD: begin
-        aligned_store_data = ex_mem_bus_i.mem_req.wdata;
-        store_byte_en = '1;
-      end
-      default: begin
-        aligned_store_data = ex_mem_bus_i.mem_req.wdata;
-        store_byte_en = '1;
-      end
-    endcase
-  end
+  // Store lane 对齐和 load lane 提取是独立的组合数据单元。请求端可能处理
+  // 年轻 store，同时响应端处理另一条更老 load，因此两套元数据不能共用。
+  store_data_unit u_store_data_unit (
+    .size_i(ex_mem_bus_i.mem_req.size),
+    .addr_offset_i(ex_mem_bus_i.mem_req.addr[1:0]),
+    .wdata_i(ex_mem_bus_i.mem_req.wdata),
+    .aligned_wdata_o(aligned_store_data),
+    .wstrb_o(store_byte_en)
+  );
 
   assign memory_instruction = ex_mem_bus_i.mem_req.valid;
 
@@ -96,7 +78,7 @@ module mem_stage #(
   assign dmem_req_o.req_valid = dmem_req_valid;
   // FIFO 的 valid_i 不反向依赖 ready_o；FIFO 内部的 valid_i && ready_o
   // 仍与 dmem_req_fire 完全等价，同时避免 fall-through 路径形成组合环。
-  assign outstanding_push_valid = ex_mem_valid_i && memory_instruction && dmem_resp_i.req_ready;
+  assign outstanding_input_valid = ex_mem_valid_i && memory_instruction && dmem_resp_i.req_ready;
 
   // 响应必须和 FIFO 头部事务配对。MEM/WB 输入不可接受时直接反压 CoreBus
   // 响应通道，不需要额外的 response holding register。
@@ -122,7 +104,7 @@ module mem_stage #(
     .testmode_i(1'b0),
     .usage_o(  /* unused */),
     .data_i(ex_mem_bus_i),
-    .valid_i(outstanding_push_valid),
+    .valid_i(outstanding_input_valid),
     .ready_o(outstanding_ready),
     .data_o(outstanding_head),
     .valid_o(outstanding_head_valid),
@@ -142,25 +124,13 @@ module mem_stage #(
     end
   end
 
-  assign load_shift_amount = {outstanding_head.mem_req.addr[1:0], 3'b000};
-  assign shifted_load_data = dmem_resp_i.rsp.rdata >> load_shift_amount;
-
-  always_comb begin
-    case (outstanding_head.mem_req.size)
-      MEM_SIZE_BYTE: begin
-        if (outstanding_head.mem_req.sign_ext)
-          loaded_data = {{(XLen - 8) {shifted_load_data[7]}}, shifted_load_data[7:0]};
-        else loaded_data = {{(XLen - 8) {1'b0}}, shifted_load_data[7:0]};
-      end
-      MEM_SIZE_HALF: begin
-        if (outstanding_head.mem_req.sign_ext)
-          loaded_data = {{(XLen - 16) {shifted_load_data[15]}}, shifted_load_data[15:0]};
-        else loaded_data = {{(XLen - 16) {1'b0}}, shifted_load_data[15:0]};
-      end
-      MEM_SIZE_WORD: loaded_data = shifted_load_data;
-      default: loaded_data = '0;
-    endcase
-  end
+  load_data_unit u_load_data_unit (
+    .size_i(outstanding_head.mem_req.size),
+    .sign_ext_i(outstanding_head.mem_req.sign_ext),
+    .addr_offset_i(outstanding_head.mem_req.addr[1:0]),
+    .rdata_i(dmem_resp_i.rsp.rdata),
+    .load_data_o(loaded_data)
+  );
 
   always_comb begin
     completed_mem_bus = '0;

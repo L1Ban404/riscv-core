@@ -33,6 +33,16 @@ EX/MEM -- memory ------->| CoreBus request               |----> dmem
 可以删除后级完全不可观察的位。FIFO 额外输出全部物理条目及其有效位，MEM 将其中
 的未完成 load 转换为 `wb_req_bus_t` 数组。
 
+纯数据变换拆成两个独立组合模块：
+
+| 模块 | 职责 |
+| --- | --- |
+| `store_data_unit.sv` | 根据请求的 size 和地址低位生成 lane 对齐的 `wdata/wstrb`。 |
+| `load_data_unit.sv` | 根据响应事务的 size、地址低位和符号扩展属性生成写回数据。 |
+
+请求和响应可能在同一周期分别处理不同指令，因此两个模块使用各自的事务元数据，
+不共享 `mem_req_bus_t` 输入。
+
 ## 请求分配
 
 EX/MEM 是严格 ready/valid 寄存器，因此 MEM 不需要额外的 request holding

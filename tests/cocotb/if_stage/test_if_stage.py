@@ -240,24 +240,19 @@ async def single_outstanding_blocks_next_request_until_response(dut):
         await RisingEdge(dut.clk_i)
         await NextTimeStep()
 
-    # stream_fifo 满时不允许同周期 pop/push，因此 PC0 响应握手周期仍然
-    # 不应出现 PC1 请求；PC1 从下一周期开始可见。
+    # peek_fifo 支持满状态同周期 pop/push，因此 PC0 响应释放队首时，
+    # holding register 中预存的 PC1 可以在同周期完成请求握手。
     dut.imem_rsp_rdata_i.value = instr_for_pc(first_pc)
     dut.imem_rsp_error_i.value = 0
     dut.imem_rsp_valid_i.value = 1
     await ReadOnly()
     assert int(dut.imem_rsp_ready_o.value) == 1
-    assert int(dut.imem_req_valid_o.value) == 0
-    await RisingEdge(dut.clk_i)
-    await NextTimeStep()
-    dut.imem_rsp_valid_i.value = 0
-
-    await ReadOnly()
     assert int(dut.imem_req_valid_o.value) == 1
     assert int(dut.imem_req_addr_o.value) == boot_pc + 4
     second_pc = int(dut.imem_req_addr_o.value)
     await RisingEdge(dut.clk_i)
     await NextTimeStep()
+    dut.imem_rsp_valid_i.value = 0
     dut.imem_req_ready_i.value = 0
     assert second_pc == boot_pc + 4
     await send_responses_for_pcs(dut, [second_pc])
@@ -525,16 +520,18 @@ async def randomized_ready_redirect_smoke(dut):
             ),
         )
 
+        # 同一个时钟沿先完成旧响应的队首 pop，再加入新请求。两者同时
+        # fire 表示深度为 1 的 FIFO 原地替换，outstanding 数量仍为 1。
+        if rsp_fire:
+            pc, epoch = outstanding.popleft()
+            if not redirect and epoch == active_epoch:
+                expected_fetches.append(pc)
+
         if req_fire:
             assert len(outstanding) < 1, "depth-1 IF accepted a second outstanding request"
             assert int(dut.imem_req_wdata_o.value) == 0
             assert int(dut.imem_req_wstrb_o.value) == 0
             outstanding.append((req_addr, active_epoch))
-
-        if rsp_fire:
-            pc, epoch = outstanding.popleft()
-            if not redirect and epoch == active_epoch:
-                expected_fetches.append(pc)
 
         await RisingEdge(dut.clk_i)
         await NextTimeStep()

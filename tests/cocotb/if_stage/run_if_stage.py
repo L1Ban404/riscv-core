@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import os
+import xml.etree.ElementTree as ET
 
 from cocotb_tools.runner import get_runner
 
@@ -60,6 +61,7 @@ def test_if_stage():
         repo_root / "third_party/ip/common_cells/src/fifo_v3.sv",
         repo_root / "third_party/ip/common_cells/src/stream_fifo.sv",
         repo_root / "third_party/ip/common_cells/src/fall_through_register.sv",
+        repo_root / "rtl/core/units/peek_fifo.sv",
         repo_root / "rtl/core/pipe/if_stage.sv",
         repo_root / "tests/cocotb/if_stage/if_stage_tb.sv",
     ]
@@ -87,16 +89,24 @@ def test_if_stage():
             waves=waves,
         )
 
+        results_xml = build_dir / "results.xml"
         runner.test(
             hdl_toplevel="if_stage_tb",
             test_module="test_if_stage",
             build_dir=build_dir,
             test_dir=repo_root / "tests/cocotb/if_stage",
-            results_xml=build_dir / "results.xml",
+            results_xml=results_xml,
             test_filter=test_filter,
             test_args=test_args,
             waves=waves,
         )
+
+        results = ET.parse(results_xml).getroot()
+        failures = results.findall(".//failure") + results.findall(".//error")
+        if failures:
+            raise RuntimeError(
+                f"IF Stage config {name} reported {len(failures)} failure(s)"
+            )
 
 
 if __name__ == "__main__":

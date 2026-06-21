@@ -58,6 +58,7 @@ module if_stage #(
   fetch_req_t req_hold_data;
   logic req_hold_ready;
   logic req_hold_valid;
+  logic req_hold_clr;
   logic fetch_req_valid;
   logic fetch_req_fire;
 
@@ -71,6 +72,7 @@ module if_stage #(
   fetch_req_t pc_fifo_data;
   logic pc_fifo_ready;
   logic pc_fifo_valid;
+  logic pc_fifo_input_valid;
 
   // fetch FIFO 同样使用 stream_fifo，保存已经配对完成的 {pc, instr}。
   // 它直接驱动 IF -> ID valid/ready 通道，ID stage 只消费完整 fetch 事务。
@@ -86,15 +88,24 @@ module if_stage #(
 
   // 请求生成端只决定是否把一个新 PC 分配给 holding register。
   // redirect 不能直接拉低已经锁存的 req_valid，否则会破坏 CoreBus 保持规则。
-  assign fetch_req_valid = !boot_pending_q && !redirect_i.valid && pc_fifo_ready;
+  // holding register 可以在 PC FIFO 满时提前保存下一条顺序请求。真正的
+  // CoreBus valid 仍由 pc_fifo_ready 门控，确保请求握手和元数据入队原子发生。
+  assign fetch_req_valid = !boot_pending_q && !redirect_i.valid;
   assign fetch_req_data = '{pc: pc_q, epoch: fetch_epoch_q};
   assign fetch_req_fire = fetch_req_valid && req_hold_ready;
 
   assign imem_req_o.req.addr = req_hold_data.pc;
   assign imem_req_o.req.wdata = '0;
   assign imem_req_o.req.wstrb = '0;
-  assign imem_req_o.req_valid = req_hold_valid;
+  assign imem_req_o.req_valid = req_hold_valid && pc_fifo_ready;
   assign imem_req_fire = imem_req_o.req_valid && imem_resp_i.req_ready;
+  // valid_i 不依赖 pc_fifo_ready；peek_fifo 内部再与 ready_o 相与得到的
+  // push 事件与 imem_req_fire 完全一致，从而避免满载交接路径形成组合环。
+  assign pc_fifo_input_valid = req_hold_valid && imem_resp_i.req_ready;
+
+  // redirect 可以丢弃尚未向 CoreBus 暴露的预存请求；已经拉高 req_valid 的
+  // 请求必须继续保持，直到从设备接受。
+  assign req_hold_clr = redirect_i.valid && !imem_req_o.req_valid;
 
   // 返回端按 CoreBus 顺序从 PC FIFO 头部取对应 PC。如果该请求 epoch
   // 与当前 epoch 不同，说明它属于 redirect 前的旧路径，只弹出不写入。
@@ -118,19 +129,19 @@ module if_stage #(
   ) u_req_hold (
     .clk_i,
     .rst_ni,
-    .clr_i(1'b0),
+    .clr_i(req_hold_clr),
     .testmode_i(1'b0),
     .valid_i(fetch_req_valid),
     .ready_o(req_hold_ready),
     .data_i(fetch_req_data),
     .valid_o(req_hold_valid),
-    .ready_i(imem_resp_i.req_ready),
+    .ready_i(imem_resp_i.req_ready && pc_fifo_ready),
     .data_o(req_hold_data)
   );
 
-  stream_fifo #(
-    .FALL_THROUGH(1'b1),
-    .DEPTH(FetchOutstandingDepth),
+  peek_fifo #(
+    .FallThrough(1'b1),
+    .Depth(FetchOutstandingDepth),
     .T(fetch_req_t)
   ) u_pc_fifo (
     .clk_i,
@@ -139,11 +150,13 @@ module if_stage #(
     .testmode_i(1'b0),
     .usage_o(  /* unused */),
     .data_i(req_hold_data),
-    .valid_i(imem_req_fire),
+    .valid_i(pc_fifo_input_valid),
     .ready_o(pc_fifo_ready),
     .data_o(pc_fifo_data),
     .valid_o(pc_fifo_valid),
-    .ready_i(imem_rsp_fire)
+    .ready_i(imem_rsp_fire),
+    .data_all_o(  /* unused */),
+    .valid_all_o(  /* unused */)
   );
 
   stream_fifo #(
