@@ -27,6 +27,11 @@ def set_mem_wb(dut, *, valid=0, data_valid=0, rd=0, value=0):
     dut.mem_wb_wdata_i.value = value & MASK32
 
 
+def set_pending(dut, *, slot0=(0, 0), slot1=(0, 0)):
+    dut.pending_0_valid_i.value, dut.pending_0_rd_addr_i.value = slot0
+    dut.pending_1_valid_i.value, dut.pending_1_rd_addr_i.value = slot1
+
+
 def drive_instruction(
     dut,
     *,
@@ -75,6 +80,7 @@ async def reset_dut(dut):
     dut.rst_ni.value = 0
     dut.ex_mem_ready_i.value = 1
     set_mem_wb(dut)
+    set_pending(dut)
     drive_instruction(dut, valid=0)
     for _ in range(3):
         await RisingEdge(dut.clk_i)
@@ -274,6 +280,33 @@ async def forwarding_priority_load_stall_and_false_dependencies(dut):
     await accept_current(dut)
     assert int(dut.ex_mem_wb_wdata_o.value) == 0x12345679
     await drain_output(dut)
+    set_mem_wb(dut)
+
+    # Any unresolved load in the MEM outstanding FIFO has priority over an
+    # older completed MEM/WB value and must block the consumer.
+    set_mem_wb(dut, valid=1, data_valid=1, rd=11, value=0x11111111)
+    set_pending(dut, slot0=(1, 3), slot1=(1, 11))
+    drive_instruction(
+        dut,
+        rs1_addr=11,
+        rs1=0,
+        rs2=1,
+        rd=12,
+        wb=WB_ALU,
+        rd_write=1,
+    )
+    await Timer(1, unit="ns")
+    assert int(dut.id_ex_ready_o.value) == 0
+
+    set_pending(dut, slot0=(1, 3), slot1=(0, 0))
+    await Timer(1, unit="ns")
+    assert int(dut.id_ex_ready_o.value) == 1
+    await RisingEdge(dut.clk_i)
+    dut.id_ex_valid_i.value = 0
+    await NextTimeStep()
+    assert int(dut.ex_mem_wb_wdata_o.value) == 0x11111112
+    await drain_output(dut)
+    set_pending(dut)
     set_mem_wb(dut)
 
     # rs2 forwarding also supplies raw store data before it enters EX/MEM.

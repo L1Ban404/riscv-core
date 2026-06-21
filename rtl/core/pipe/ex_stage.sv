@@ -5,7 +5,9 @@ import riscv_core_pkg::*;
 
 `include "common_cells/assertions.svh"
 
-module ex_stage (
+module ex_stage #(
+  parameter int unsigned MemOutstandingDepth = 2
+) (
   input logic clk_i,
   input logic rst_ni,
 
@@ -15,8 +17,9 @@ module ex_stage (
   output logic id_ex_ready_o,
   input id_ex_bus_t id_ex_bus_i,
 
-  // MEM/WB 写回候选。另一路较老的 EX/MEM 候选由本 stage 内部保存，
-  // forwarding unit 直接接收两路 wb_req，不再经顶层聚合总线绕回。
+  // MEM outstanding load 以及 MEM/WB 写回候选。另一路年龄最近的 EX/MEM
+  // 候选由本 stage 内部保存。
+  input wb_req_bus_t mem_pending_wb_req_i [MemOutstandingDepth],
   input wb_req_bus_t mem_wb_req_i,
 
   // EX -> IF redirect。该信号单向指向前端，只影响更年轻的 IF/ID 事务。
@@ -50,12 +53,15 @@ module ex_stage (
     ex_mem_wb_req.valid = ex_mem_valid_o && ex_mem_bus_o.wb_req.valid;
   end
 
-  forwarding_unit u_forwarding_unit (
+  forwarding_unit #(
+    .MemOutstandingDepth(MemOutstandingDepth)
+  ) u_forwarding_unit (
     .reg_addr_i(id_ex_bus_i.reg_addr),
     .rs1_value_i(id_ex_bus_i.exec_data.rs1_value),
     .rs2_value_i(id_ex_bus_i.exec_data.rs2_value),
     .ctrl_i(id_ex_bus_i.ctrl),
     .ex_wb_req_i(ex_mem_wb_req),
+    .mem_pending_wb_req_i,
     .mem_wb_req_i,
     .rs1_value_o(rs1_value),
     .rs2_value_o(rs2_value),

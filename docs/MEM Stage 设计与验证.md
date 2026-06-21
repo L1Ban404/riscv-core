@@ -1,0 +1,140 @@
+# MEM Stage 设计与验证
+
+本文档说明 `mem_stage` 的多 outstanding 顺序访存结构、退休顺序、数据相关接口、
+load/store 数据处理以及模块级验证。
+
+## 设计目标
+
+MEM 每周期最多接受一个 EX/MEM 事务，并使用统一 CoreBus 请求流发出 load 或
+store。多个访存请求可以同时在飞，但所有响应必须按照请求接受顺序返回。
+
+当前默认 `MemOutstandingDepth=2`。该参数同时传给 MEM、EX 和
+`forwarding_unit`，保证 pending 写回数组宽度一致。
+
+## 总体结构
+
+```text
+                         +-------------------------------+
+EX/MEM -- memory ------->| CoreBus request               |----> dmem
+   |                     |             |                 |
+   |                     |             v                 |
+   |                     |  peek_fifo<ex_mem_bus_t>      |
+   |                     |      | head       | all       |
+   |                     |      v            v           |
+   |                     | response merge   wb_req[] ----+----> EX hazard
+   |                     +----------+--------------------+
+   |                                |
+   +-- non-memory, FIFO empty ------+
+                                    v
+                           MEM/WB stream_register
+```
+
+`peek_fifo` 保存完整 `ex_mem_bus_t`，使请求元数据和 debug 信息保持统一。综合器
+可以删除后级完全不可观察的位。FIFO 额外输出全部物理条目及其有效位，MEM 将其中
+的未完成 load 转换为 `wb_req_bus_t` 数组。
+
+## 请求分配
+
+EX/MEM 是严格 ready/valid 寄存器，因此 MEM 不需要额外的 request holding
+register。访存事务只有在 CoreBus slave 和 outstanding FIFO 同时可接受时才完成：
+
+```text
+EX/MEM fire = CoreBus request fire = outstanding FIFO push
+```
+
+请求等待期间，EX/MEM 保持完整 payload，MEM 因而能够保持 CoreBus `req_valid`
+及请求内容稳定。
+
+CoreBus 请求固定为字宽：
+
+- 地址向下对齐到 4-byte 边界。
+- load 使用 `wstrb=0`。
+- store 在 MEM 根据原始地址低位和 size 生成 lane 对齐后的 `wdata/wstrb`。
+
+`peek_fifo` 支持满状态下同周期 pop/push。若一个响应释放队首，同时 CoreBus
+接受新请求，outstanding 数保持不变，不插入容量气泡。
+
+## 响应合并
+
+CoreBus 严格顺序响应，因此响应直接对应 FIFO 头部：
+
+```text
+CoreBus response fire = outstanding FIFO pop
+```
+
+load 使用 FIFO 中保存的 `addr[1:0]`、`size` 和 `sign_ext` 从完整字响应中提取并
+扩展最终写回值。store 也必须等待响应，但不产生寄存器写回。
+
+响应结果直接写入 MEM/WB `stream_register`。当该寄存器不能接受新事务时，MEM
+拉低 CoreBus `rsp_ready`，由 slave 保持响应，不设置重复的 response FIFO。
+
+请求和响应可以在同一周期握手。空 FIFO 使用 fall-through 路径把刚接受请求的
+元数据与零延迟响应配对；若响应同时被 MEM/WB 接受，该事务不会占用 FIFO 条目。
+
+## 顺序退休
+
+outstanding FIFO 只保存访存指令，而不是所有指令。为避免非访存指令越过尚未完成
+的 load/store，MEM 使用以下规则：
+
+- 连续访存指令可以进入 FIFO，直到 FIFO 满。
+- FIFO 非空时，后续非访存指令停在 EX/MEM。
+- FIFO 为空时，非访存指令可以进入 MEM/WB。
+- MEM/WB 中更老事务受到背压时，年轻访存仍可发出请求；其响应会被 MEM/WB 输入
+  ready 反压，不能越过更老事务。
+
+该规则保持顺序退休和 WAW 正确性，同时允许连续访存隐藏 CoreBus 延迟，无需引入
+全指令完成队列或 ROB。
+
+## Pending load 与前递
+
+每个已存储 FIFO 条目组合转换为一个 pending `wb_req_bus_t`：
+
+```text
+valid      = slot_valid && entry.wb_req.valid
+data_valid = 0
+rd_addr    = entry.wb_req.rd_addr
+wdata      = 0
+```
+
+EX 前递优先级为：
+
+```text
+EX/MEM > MEM pending load[] > MEM/WB > regfile
+```
+
+pending 数组不携带可前递数据。`forwarding_unit` 只比较所有有效目标寄存器，并在
+任一匹配时阻塞消费者。这也正确处理多个 outstanding load 写同一个 `rd` 的情况：
+必须等所有更年轻匹配项完成后，消费者才能使用最终值。
+
+## 当前错误处理边界
+
+CoreBus `error` 和原始 `rdata` 会进入 MEM debug payload，但当前不产生 trap，也不
+抑制 load 写回。非对齐访问异常同样留待异常/CSR 通路统一实现。系统软件在该功能
+完成前不能依赖精确数据访问异常。
+
+## 验证
+
+模块级验证位于 `tests/cocotb/mem_stage/`：
+
+| 测试 | 覆盖内容 |
+| --- | --- |
+| `non_memory_bypass_and_mem_wb_backpressure` | 普通事务旁路、MEM/WB payload 保持和写回门控。 |
+| `store_alignment_and_load_extraction` | store lane 对齐、地址对齐、load byte 符号扩展和 debug 响应。 |
+| `multiple_outstanding_preserves_retirement_order` | 两条 load 在飞、pending 数组、非访存阻塞、响应背压和顺序输出。 |
+| `full_fifo_pop_push_and_zero_latency_response` | FIFO 满时同拍 pop/push，以及请求/响应同周期握手。 |
+
+运行测试：
+
+```sh
+make test-mem-stage
+```
+
+生成波形：
+
+```sh
+make wave-mem-stage
+make wave-mem-stage-vcd
+```
+
+RTL 断言检查 CoreBus 请求等待期间 valid/payload 稳定、MEM/WB 输出等待期间稳定，
+以及 `peek_fifo` 使用量和物理有效位数量一致。

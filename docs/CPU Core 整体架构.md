@@ -38,10 +38,10 @@ IF -> ID -> EX -> MEM -> WB
 
 | 模块 | 当前状态 | 主要内容 |
 | --- | --- | --- |
-| IF | 已实现并模块级验证 | 多 outstanding 取指、PC/epoch FIFO、IF/ID FIFO、redirect。 |
+| IF | 已实现并模块级验证 | 默认单 outstanding 取指、PC/epoch FIFO、IF/ID FIFO、redirect。 |
 | ID | 已实现并模块级验证 | RV32I 译码、立即数、寄存器堆、ID/EX 寄存器。 |
 | EX | 已实现并模块级验证 | ALU、分支、前递、相关阻塞、EX/MEM 寄存器。 |
-| MEM | 占位 | 只有 store lane 对齐组合逻辑，尚无 CoreBus LSU 队列和 MEM/WB 寄存器。 |
+| MEM | 已实现并模块级验证 | 多 outstanding 顺序访存、全条目相关观察、响应合并、MEM/WB 寄存器。 |
 | WB | 占位 | 尚未写寄存器堆，也未生成退休 debug。 |
 | 异常/CSR | 未实现 | 目前只有类型和部分预留 redirect reason。 |
 | 整核验证 | 未实现 | 当前以 IF、ID、EX 模块级 cocotb 测试为主。 |
@@ -51,6 +51,7 @@ IF -> ID -> EX -> MEM -> WB
 - `docs/IF Stage 设计与验证.md`
 - `docs/ID Stage 设计与验证.md`
 - `docs/EX Stage 设计与验证.md`
+- `docs/MEM Stage 设计与验证.md`
 - `docs/RTL 编码风格.md`
 
 ## 3. 顶层结构
@@ -74,7 +75,7 @@ IF -> ID -> EX -> MEM -> WB
                         | ID/EX ready/valid
                         v
               +-------------------+
- MEM/WB fwd ->|        EX         |---- redirect ----> IF
+ MEM fwd ---->|        EX         |---- redirect ----> IF
               | ALU / branch / fwd|
               +---------+---------+
                         | EX/MEM ready/valid
@@ -100,7 +101,7 @@ IF -> ID -> EX -> MEM -> WB
 | IF/ID | IF | 非 fall-through fetch FIFO。 |
 | ID/EX | ID | 单入口 `stream_register`。 |
 | EX/MEM | EX | 单入口 `stream_register`。 |
-| MEM/WB | MEM | 应实现为单入口 `stream_register` 或等价弹性寄存器。 |
+| MEM/WB | MEM | 单入口 `stream_register`。 |
 
 这种所有权规则让顶层保持纯结构化，也让每个 stage 的模块级测试可以完整覆盖其
 输出事务协议。
@@ -148,7 +149,7 @@ stage_valid = 0
 ex_mem_wb_req.valid = ex_mem_valid_o && ex_mem_bus_o.wb_req.valid;
 ```
 
-未来 MEM 生成 `mem_wb_req_o` 时也必须遵守同一规则。
+MEM 生成的 `mem_wb_req_o` 同样使用 `mem_wb_valid_o` 门控。
 
 ## 5. Ready/Valid 事务模型
 
@@ -237,8 +238,9 @@ cycle N+1: EX/MEM 保存 I1，ID/EX 可保存 I2
 
 ### 6.2 长延迟 load/store
 
-未来 MEM 的顺序完成队列会在 CoreBus 响应返回前保留指令元数据，并在队列满时
-通过 EX/MEM 反压自然停止前端，不需要额外的全局 memory stall。
+MEM 的 outstanding FIFO 会在 CoreBus 响应返回前保留访存元数据，并在队列满时
+通过 EX/MEM 反压自然停止前端，不需要额外的全局 memory stall。连续访存可以并行
+在飞；非访存指令不能越过尚未完成的更老访存事务。
 
 ### 6.3 数据相关阻塞
 
@@ -255,18 +257,19 @@ id_ex_ready_o = ex_mem_input_ready && !forward_stall;
 
 ### 7.1 三个数据可见层次
 
-一条依赖指令在 EX 执行时，可以从三个位置取得源操作数：
+一条依赖指令在 EX 执行时，需要观察四个数据层次：
 
 ```text
 最近：EX/MEM 写回候选
-其次：MEM/WB 写回候选
+其次：MEM outstanding FIFO 中尚未完成的 load
+再次：MEM/WB 写回候选
 最老：ID 从寄存器堆读出的值
 ```
 
 优先级必须是：
 
 ```text
-EX/MEM > MEM/WB > regfile
+EX/MEM > MEM pending load > MEM/WB > regfile
 ```
 
 若两个较老指令写同一个 `rd`，消费者必须看到年龄最近的值。
@@ -286,6 +289,7 @@ wdata       候选写回值
 | --- | --- | ---: | ---: |
 | EX/MEM | ALU、AUIPC、JAL/JALR | 1 | 1 |
 | EX/MEM | load | 1 | 0 |
+| MEM outstanding FIFO | 尚未响应的 load | 1 | 0 |
 | MEM/WB | 已完成 load | 1 | 1 |
 | 任意 | store、branch、FENCE | 0 | 0 |
 
@@ -327,8 +331,8 @@ MEM/WB: load x5          wb.valid=1, data_valid=1
 ID/EX:  add  x6, x5, x7  从 MEM/WB 前递后进入 EX/MEM
 ```
 
-当前结构至少产生与存储器完成时序相符的等待周期。是否增加 MEM response 到 EX
-的同周期旁路，应在 MEM 完成后依据时序和性能报告决定，不能破坏上述优先级。
+load 离开 EX/MEM 后仍由 MEM pending 数组保持相关可见性。响应进入 MEM/WB 后，
+消费者从 MEM/WB 前递；当前没有 response-to-EX 的同周期组合旁路。
 
 ## 8. 控制相关、Redirect 与冲刷
 
@@ -458,7 +462,7 @@ ID 已实现：
 EX 已实现：
 
 - 主 ALU、branch unit、forwarding unit。
-- 两级前递和 load-use stall。
+- EX/MEM、MEM pending、MEM/WB 前递/相关检测和 load-use stall。
 - 写回与访存候选生成。
 - EX/MEM `stream_register`。
 - EX redirect 和 debug。
@@ -470,24 +474,15 @@ EX 已实现：
 - JAL/JALR 的 `PC+4` 使用常数增量器。
 - store 数据移位和 byte enable 生成移到 MEM，缩短 EX 关键路径。
 
-### 9.4 MEM Stage 开发契约
+### 9.4 MEM Stage
 
-MEM 尚未实现。目标结构使用顺序完成队列和 CoreBus 请求流：每周期最多发出一个
-load 或 store，但允许多个请求 outstanding。CoreBus 保证所有读写响应严格按照
-请求接受顺序返回，因此不需要事务 ID 或读写分离的响应匹配逻辑。
+MEM 使用参数化 `peek_fifo` 保存完整 `ex_mem_bus_t` 访存元数据。每周期最多发出
+一个 load 或 store，但允许多个请求 outstanding。CoreBus 保证所有读写响应严格
+按照请求接受顺序返回，因此 FIFO 头部总能与下一个响应直接配对。
 
-#### Order FIFO
-
-MEM 必须按程序顺序保存所有进入该级的指令，而不只是访存请求。Order FIFO
-entry 至少包含：
-
-- `mem_req_bus_t`，用于区分普通指令、load 和 store。
-- `wb_req_bus_t`，保存目的寄存器和已就绪结果。
-- EX debug payload。
-- load 的地址低位、size 和符号扩展信息。
-
-普通指令入队后立即处于完成状态；load/store 只有配对的 CoreBus 响应返回后才
-完成。只有已完成的队首 entry 可以进入 MEM/WB，因此所有指令保持顺序退休。
+FIFO 只保存访存指令。为了保持顺序退休，只要 FIFO 非空，后续非访存指令就停在
+EX/MEM；连续访存指令仍可继续进入 FIFO。已经进入 MEM/WB 输出寄存器的更老普通
+指令不阻止年轻访存发出请求，响应会在 MEM/WB 不可接受时受到反压。
 
 #### 请求分配
 
@@ -499,67 +494,42 @@ core_req.wdata = aligned_store_data;
 core_req.wstrb = is_store ? store_byte_enable : '0;
 ```
 
-`wstrb=0` 表示 load，非 0 表示 store。访问 size 不进入 CoreBus；它只参与 MEM
-内部的 load 提取、store lane 生成和非对齐检查。
+EX/MEM 本身满足严格 ready/valid 保持规则，因此 MEM 不设置额外 request holding
+register。事件关系为：
 
-访存指令只有在 Order FIFO 和请求 holding register/FIFO 都能接收时才能离开
-EX/MEM，二者必须原子分配。请求一旦被 CoreBus 接受，其元数据必须继续保留到
-对应响应被消费。
+```text
+EX/MEM fire = CoreBus request fire = outstanding FIFO push
+CoreBus response fire = outstanding FIFO pop
+```
 
 #### 响应合并
 
-CoreBus 每个请求都返回一个响应，store 也不例外。由于响应严格有序，下一个
-响应总是对应最老的 outstanding 访存请求。MEM 应使用响应 FIFO 或等价状态保存
-`rdata/error`，并与 Order FIFO 中对应的访存 entry 合并。
+响应直接与 outstanding FIFO 头部合并后进入 MEM/WB `stream_register`。Load 根据
+保存的 `addr[1:0]`、`size` 和 `sign_ext` 提取 byte/half/word 并产生有效写回值；
+store 等待响应后以无寄存器写回事务继续流动。
 
-Load 响应根据保存的 `addr[1:0]`、`size` 和 `sign_ext` 提取 byte/half/word，随后
-写入 `wb_req.wdata` 并设置 `data_valid=1`。Store 响应的 `rdata` 忽略，但必须等
-响应到达后才能把 store 标记为完成。
-
-若响应已经到达而 MEM/WB 被反压，MEM 必须保存响应，或者拉低 `rsp_ready` 让
-CoreBus slave 保持它；不能丢失响应或重复发出请求。设计还必须支持请求握手
-同周期返回响应。
+MEM/WB 无法接受时，MEM 拉低 `rsp_ready`，由 CoreBus slave 保持响应。空 FIFO 的
+fall-through 路径支持请求握手同周期返回响应。FIFO 满且响应 pop 时也允许同周期
+push 新请求。
 
 #### 数据相关
 
-多 entry Order FIFO 会让尚未退休的写回候选离开 EX/MEM 和 MEM/WB 两个现有前递
-观察点。因此实现多 outstanding 前，必须同步扩展相关检测：
+`peek_fifo` 暴露所有物理条目。MEM 将有效 load 转换为 `wb_req_bus_t` 数组，其中
+`data_valid=0`、`wdata=0`。EX 对全部目标寄存器做 pending 检查：
 
-- 对 Order FIFO 中所有有效 `rd` 做 pending/CAM 检查。
-- 匹配尚未返回的 load 时阻塞消费者。
-- 多个 entry 写同一 `rd` 时选择年龄最近的较老生产者。
-- 已有结果可以从队列前递，或保守地阻塞到它进入 MEM/WB。
-
-不能只增加请求 FIFO 而保留当前两路前递，否则 load 离开 EX/MEM 后会从 hazard
-检测中消失，年轻消费者可能读取旧寄存器值。
+- 任一 pending load 匹配都阻塞消费者。
+- pending 匹配优先于更老的 MEM/WB 已完成值。
+- 数据只从 EX/MEM 或 MEM/WB 前递，pending 数组不生成数据选择器。
 
 #### MEM/WB 边界
 
-MEM 应拥有 MEM/WB `stream_register`。其输入 valid 表示：
+MEM/WB 使用 `stream_register`。`mem_wb_req_o` 取自其输出，并使用
+`mem_wb_valid_o` 门控，避免空寄存器残留 payload 参与前递。
 
-- 普通指令已经到达 Order FIFO 队首。
-- load 已取得并扩展 CoreBus 返回数据。
-- store 已收到 CoreBus 完成响应。
+#### 当前异常边界
 
-`mem_wb_req_o` 应取自有效的 MEM/WB 输出，并用 `mem_wb_valid_o` 门控：
-
-```systemverilog
-mem_wb_req_o = mem_wb_bus_o.wb_req;
-mem_wb_req_o.valid = mem_wb_valid_o && mem_wb_bus_o.wb_req.valid;
-```
-
-这样 EX 前递单元不会读取空 MEM/WB 寄存器中残留的 payload。
-
-#### CoreBus 错误和非对齐访问
-
-在 trap 通路实现前，至少应：
-
-- 用断言捕获不支持的非对齐访问。
-- 在 debug 中记录 CoreBus `error` 和返回数据。
-- 不要静默把跨 32-bit lane 的 half/word store 当成正确单拍事务。
-
-最终设计应把非对齐和 CoreBus 错误转换为精确异常，并保证错误指令及年轻指令不会
-产生错误架构副作用。
+CoreBus `error` 和原始返回数据会记录到 debug，但当前不产生 trap。非对齐访问也
+留待异常通路统一处理；实现异常后必须重新审查多 outstanding store 的精确副作用。
 
 ### 9.5 WB Stage 开发契约
 
@@ -711,39 +681,28 @@ EX/MEM or MEM/WB compare
 
 ## 15. 推荐的剩余开发顺序
 
-### 步骤 1：完成 MEM Stage
-
-- 参数化的小深度顺序 Order FIFO。
-- CoreBus 请求 holding/FIFO 与顺序响应合并。
-- 多 outstanding 数据相关检测。
-- load 数据提取与扩展。
-- store lane 对齐。
-- MEM/WB 弹性寄存器。
-- MEM/WB 前递候选。
-- 模块级 cocotb 测试和波形。
-
-### 步骤 2：完成 WB Stage
+### 步骤 1：完成 WB Stage
 
 - 写回 ID 寄存器堆。
 - 精确退休事件。
 - `core_debug_o` 展平。
 - x0、无写回指令和背压测试。
 
-### 步骤 3：整核最小程序验证
+### 步骤 2：整核最小程序验证
 
 - CoreBus 指令/数据存储器模型。
 - 小型 RV32I 汇编程序。
 - 架构寄存器和内存 scoreboard。
 - 分支、load-use、store、背压混合场景。
 
-### 步骤 4：异常与 CSR
+### 步骤 3：异常与 CSR
 
 - 非法指令、ECALL、EBREAK。
 - misaligned、instruction/data access fault。
 - `mepc`、`mcause`、`mtvec`、`mstatus` 等最小 M-mode CSR。
 - 多来源 redirect 仲裁和精确冲刷。
 
-### 步骤 5：架构与形式验证
+### 步骤 4：架构与形式验证
 
 - riscv-tests / riscv-arch-test。
 - RVFI 和 riscv-formal。
@@ -758,6 +717,7 @@ EX/MEM or MEM/WB compare
 - IF：10 组运行。
 - ID：3 组测试。
 - EX：5 组测试。
+- MEM：4 组测试。
 
 运行完整回归：
 
@@ -771,6 +731,7 @@ make test
 make test-if-stage
 make test-id-stage
 make test-ex-stage
+make test-mem-stage
 ```
 
 生成 FST 波形：
@@ -779,6 +740,7 @@ make test-ex-stage
 make wave-if-stage
 make wave-id-stage
 make wave-ex-stage
+make wave-mem-stage
 ```
 
 生成 VCD 波形时使用对应的 `*-vcd` 目标。
@@ -794,8 +756,7 @@ make wave-ex-stage
 
 ## 17. 当前已知限制
 
-- MEM 和 WB 仍是占位实现，当前核心不能完整执行并退休程序。
-- 数据 CoreBus 接口尚不发起真实事务。
+- WB 仍是占位实现，当前核心不能完整退休程序。
 - 非法指令和总线错误尚不能产生 trap。
 - 不支持中断、CSR、特权级、缓存和 MMU。
 - 非对齐数据访问策略尚未最终实现。

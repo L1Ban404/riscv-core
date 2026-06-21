@@ -3,7 +3,9 @@
 
 import riscv_core_pkg::*;
 
-module riscv_core (
+module riscv_core #(
+  parameter int unsigned MemOutstandingDepth = 2
+) (
   input logic clk_i,
   input logic rst_ni,
 
@@ -66,6 +68,7 @@ module riscv_core (
   // 写回请求同时承担寄存器堆写回和 MEM/WB 数据前递角色。EX/MEM 候选
   // 由 EX stage 内部保存，不再经过顶层绕回。
   wb_req_bus_t mem_wb_req;
+  wb_req_bus_t mem_pending_wb_req [MemOutstandingDepth];
   wb_req_bus_t wb_wb_req;
 
   if_stage u_if_stage (
@@ -92,12 +95,15 @@ module riscv_core (
     .id_ex_bus_o(id_ex_bus)
   );
 
-  ex_stage u_ex_stage (
+  ex_stage #(
+    .MemOutstandingDepth(MemOutstandingDepth)
+  ) u_ex_stage (
     .clk_i(clk_i),
     .rst_ni(rst_ni),
     .id_ex_valid_i(id_ex_valid),
     .id_ex_ready_o(id_ex_ready),
     .id_ex_bus_i(id_ex_bus),
+    .mem_pending_wb_req_i(mem_pending_wb_req),
     .mem_wb_req_i(mem_wb_req),
     .redirect_o(redirect_bus),
     .ex_mem_valid_o(ex_mem_valid),
@@ -105,7 +111,9 @@ module riscv_core (
     .ex_mem_bus_o(ex_mem_bus)
   );
 
-  mem_stage u_mem_stage (
+  mem_stage #(
+    .MemOutstandingDepth(MemOutstandingDepth)
+  ) u_mem_stage (
     .clk_i(clk_i),
     .rst_ni(rst_ni),
     .ex_mem_valid_i(ex_mem_valid),
@@ -113,6 +121,7 @@ module riscv_core (
     .ex_mem_bus_i(ex_mem_bus),
     .dmem_req_o(dmem_req_o),
     .dmem_resp_i(dmem_resp_i),
+    .mem_pending_wb_req_o(mem_pending_wb_req),
     .mem_wb_req_o(mem_wb_req),
     .mem_wb_valid_o(mem_wb_valid),
     .mem_wb_ready_i(mem_wb_ready),

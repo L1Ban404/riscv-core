@@ -1,15 +1,15 @@
 # Copyright (c) 2026
 # SPDX-License-Identifier: Apache-2.0
 
-.PHONY: all test test-if-stage test-id-stage test-ex-stage wave wave-if-stage wave-id-stage wave-ex-stage wave-vcd wave-if-stage-vcd wave-id-stage-vcd wave-ex-stage-vcd lint lint-if-stage clean clean-build
+.PHONY: all test test-if-stage test-id-stage test-ex-stage test-mem-stage wave wave-if-stage wave-id-stage wave-ex-stage wave-mem-stage wave-vcd wave-if-stage-vcd wave-id-stage-vcd wave-ex-stage-vcd wave-mem-stage-vcd lint lint-if-stage clean clean-build
 
 all: test
 
-test: test-if-stage test-id-stage test-ex-stage
+test: test-if-stage test-id-stage test-ex-stage test-mem-stage
 
-wave: wave-if-stage wave-id-stage wave-ex-stage
+wave: wave-if-stage wave-id-stage wave-ex-stage wave-mem-stage
 
-wave-vcd: wave-if-stage-vcd wave-id-stage-vcd wave-ex-stage-vcd
+wave-vcd: wave-if-stage-vcd wave-id-stage-vcd wave-ex-stage-vcd wave-mem-stage-vcd
 
 test-if-stage:
 	$(MAKE) -C tests/cocotb/if_stage test
@@ -20,6 +20,9 @@ test-id-stage:
 test-ex-stage:
 	$(MAKE) -C tests/cocotb/ex_stage test
 
+test-mem-stage:
+	$(MAKE) -C tests/cocotb/mem_stage test
+
 wave-if-stage:
 	$(MAKE) -C tests/cocotb/if_stage wave
 
@@ -29,6 +32,9 @@ wave-id-stage:
 wave-ex-stage:
 	$(MAKE) -C tests/cocotb/ex_stage wave
 
+wave-mem-stage:
+	$(MAKE) -C tests/cocotb/mem_stage wave
+
 wave-if-stage-vcd:
 	$(MAKE) -C tests/cocotb/if_stage wave-vcd
 
@@ -37,6 +43,9 @@ wave-id-stage-vcd:
 
 wave-ex-stage-vcd:
 	$(MAKE) -C tests/cocotb/ex_stage wave-vcd
+
+wave-mem-stage-vcd:
+	$(MAKE) -C tests/cocotb/mem_stage wave-vcd
 
 clean: 
 	rm -rf build
