@@ -1,7 +1,7 @@
 # CPU Core 整体架构
 
 本文档描述当前 RISC-V CPU Core 的整体微架构、流水线事务模型、背压传播、
-redirect/冲刷和数据前递规则，并给出 MEM、WB、异常与整核验证等剩余内容的
+redirect/冲刷和数据前递规则，并给出异常与整核验证等剩余内容的
 开发契约。
 
 目标读者是继续开发本核心 RTL 和验证环境的工程师。阅读本文后，应能够在不
@@ -42,16 +42,17 @@ IF -> ID -> EX -> MEM -> WB
 | ID | 已实现并模块级验证 | RV32I 译码、立即数、寄存器堆、ID/EX 寄存器。 |
 | EX | 已实现并模块级验证 | ALU、分支、前递、相关阻塞、EX/MEM 寄存器。 |
 | MEM | 已实现并模块级验证 | 多 outstanding 顺序访存、全条目相关观察、响应合并、MEM/WB 寄存器。 |
-| WB | 占位 | 尚未写寄存器堆，也未生成退休 debug。 |
+| WB | 已实现并模块级验证 | 组合写回、顺序退休和 `core_debug_o` 展平。 |
 | 异常/CSR | 未实现 | 目前只有类型和部分预留 redirect reason。 |
-| 整核验证 | 未实现 | 当前以 IF、ID、EX 模块级 cocotb 测试为主。 |
+| 整核验证 | 未实现 | 当前五个 stage 均有模块级 cocotb 测试。 |
 
-开发 MEM 或 WB 前，应先阅读本文件对应章节以及：
+修改流水线前，应先阅读本文件对应章节以及：
 
 - `docs/IF Stage 设计与验证.md`
 - `docs/ID Stage 设计与验证.md`
 - `docs/EX Stage 设计与验证.md`
 - `docs/MEM Stage 设计与验证.md`
+- `docs/WB Stage 设计与验证.md`
 - `docs/RTL 编码风格.md`
 
 ## 3. 顶层结构
@@ -531,17 +532,18 @@ MEM/WB 使用 `stream_register`。`mem_wb_req_o` 取自其输出，并使用
 CoreBus `error` 和原始返回数据会记录到 debug，但当前不产生 trap。非对齐访问也
 留待异常通路统一处理；实现异常后必须重新审查多 outstanding store 的精确副作用。
 
-### 9.5 WB Stage 开发契约
+### 9.5 WB Stage
 
-WB 是当前五级流水线的退休点。推荐语义：
+WB 是当前五级流水线的退休点。实现语义：
 
 ```systemverilog
 wb_fire = mem_wb_valid_i && mem_wb_ready_o;
 ```
 
-第一版没有外部退休 backpressure 时，`mem_wb_ready_o` 可以恒为 1。
+当前没有外部退休 backpressure，`mem_wb_ready_o` 恒为 1。MEM/WB
+`stream_register` 是最后一道时序边界，WB 本身是纯组合逻辑，不再增加寄存器。
 
-WB 应负责：
+WB 负责：
 
 - 将有效且 `data_valid=1` 的 `wb_req`送回 ID 寄存器堆。
 - 用 `wb_fire` 门控写回，保证事务只提交一次。
@@ -549,7 +551,7 @@ WB 应负责：
 - 仅在 `wb_fire` 时拉高 `core_debug_o.valid`。
 - 确保 store、branch、FENCE 等无寄存器写回指令仍能正常退休。
 
-推荐写回有效条件：
+实际寄存器堆写入条件：
 
 ```text
 wb_fire
@@ -558,7 +560,8 @@ wb_fire
 && rd_addr != x0
 ```
 
-虽然 regfile 还会防御性忽略 x0 和无效数据，WB 仍应输出语义完整的请求。
+WB 使用 `wb_fire` 门控整个 `wb_req` 事务，但保留 payload 中
+`valid/data_valid/rd_addr` 的原始语义。regfile 防御性忽略 x0 和无效数据。
 
 WB 不需要再次向 EX 提供独立前递端口；EX 已直接观察 MEM/WB 候选。
 
@@ -617,7 +620,7 @@ WB debug  -> MEM debug + wb_req + retire valid
 
 ## 12. 复位与启动
 
-- 所有 stage 使用同一个 `clk_i` 和低有效 `rst_ni`。
+- 所有有状态 stage 使用同一个 `clk_i` 和低有效 `rst_ni`；纯组合 WB 不需要时钟或复位。
 - 流水线 valid、FIFO usage、CoreBus holding register 和 outstanding 状态必须复位为空。
 - 普通 GPR 不复位；RISC-V 不要求复位后普通寄存器具有确定值。
 - x0 始终读为 0。
@@ -681,28 +684,21 @@ EX/MEM or MEM/WB compare
 
 ## 15. 推荐的剩余开发顺序
 
-### 步骤 1：完成 WB Stage
-
-- 写回 ID 寄存器堆。
-- 精确退休事件。
-- `core_debug_o` 展平。
-- x0、无写回指令和背压测试。
-
-### 步骤 2：整核最小程序验证
+### 步骤 1：整核最小程序验证
 
 - CoreBus 指令/数据存储器模型。
 - 小型 RV32I 汇编程序。
 - 架构寄存器和内存 scoreboard。
 - 分支、load-use、store、背压混合场景。
 
-### 步骤 3：异常与 CSR
+### 步骤 2：异常与 CSR
 
 - 非法指令、ECALL、EBREAK。
 - misaligned、instruction/data access fault。
 - `mepc`、`mcause`、`mtvec`、`mstatus` 等最小 M-mode CSR。
 - 多来源 redirect 仲裁和精确冲刷。
 
-### 步骤 4：架构与形式验证
+### 步骤 3：架构与形式验证
 
 - riscv-tests / riscv-arch-test。
 - RVFI 和 riscv-formal。
@@ -718,6 +714,7 @@ EX/MEM or MEM/WB compare
 - ID：3 组测试。
 - EX：5 组测试。
 - MEM：4 组测试。
+- WB：3 组测试。
 
 运行完整回归：
 
@@ -732,6 +729,7 @@ make test-if-stage
 make test-id-stage
 make test-ex-stage
 make test-mem-stage
+make test-wb-stage
 ```
 
 生成 FST 波形：
@@ -741,6 +739,7 @@ make wave-if-stage
 make wave-id-stage
 make wave-ex-stage
 make wave-mem-stage
+make wave-wb-stage
 ```
 
 生成 VCD 波形时使用对应的 `*-vcd` 目标。
@@ -756,7 +755,6 @@ make wave-mem-stage
 
 ## 17. 当前已知限制
 
-- WB 仍是占位实现，当前核心不能完整退休程序。
 - 非法指令和总线错误尚不能产生 trap。
 - 不支持中断、CSR、特权级、缓存和 MMU。
 - 非对齐数据访问策略尚未最终实现。

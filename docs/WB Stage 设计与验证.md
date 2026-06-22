@@ -1,0 +1,88 @@
+# WB Stage 设计与验证
+
+本文档说明 `wb_stage` 的写回、退休和 debug 展平语义，以及对应的模块级验证。
+
+## 设计目标
+
+WB 是五级顺序流水线的退休点，负责：
+
+- 把 MEM/WB 中的最终写回事务送回 ID 内部寄存器堆。
+- 在事务真正退休时产生 `core_debug_o.valid`。
+- 将随指令累积的 IF/ID/EX/MEM debug payload 展平。
+- 保证 store、branch 等不写 GPR 的指令仍能正常退休。
+
+## 组合退休端
+
+MEM/WB `stream_register` 已经是流水线的最后一道时序边界。当前核心没有
+外部退休背压，因此 WB 不需要再放置寄存器或 FIFO：
+
+```text
+mem_wb_ready_o = 1
+wb_fire        = mem_wb_valid_i && mem_wb_ready_o
+```
+
+`wb_stage` 不含状态，因而不需要 `clk_i` 和 `rst_ni`。这不会将 MEM/WB 边界变成
+组合通路；实际 payload 仍由 MEM 内部的 `stream_register` 保持。
+
+## 写回语义
+
+`wb_fire=1` 时，WB 透传完整 `mem_wb_bus_i.wb_req`。`wb_fire=0` 时，
+`wb_req_o` 清零，防止空 MEM/WB 寄存器中的残留 payload 被解释为新写回。
+
+`wb_req_bus_t` 保留两层有效语义：
+
+- `valid`：该指令存在 GPR 写回意图。
+- `data_valid`：`wdata` 已经是最终可写入值。
+
+寄存器堆的实际写使能为：
+
+```text
+wb_req.valid && wb_req.data_valid && rd_addr != x0
+```
+
+x0 过滤由 `regfile` 统一负责，WB 不改写原始退休事务的 `rd_addr`。
+
+## Debug 展平
+
+`core_debug_o.valid` 仅在 `wb_fire` 时置位。其余字段从 `mem_wb_bus_i`
+逐层展开：
+
+```text
+fetch / reg_addr / ctrl / redirect / alu_result / mem_req / mem_rsp / wb_req
+```
+
+在 bubble 周期，整个 `core_debug_o` 清零。Debug 只记录已退休指令，不参与任何
+功能控制或前递判断。
+
+## 时序关系
+
+MEM/WB payload 在一个周期内同时驱动：
+
+- `wb_req_o`，由 ID 中的 regfile 在周期末写入。
+- `core_debug_o`，供仿真环境在该退休周期采样。
+
+EX 不从 WB 输出取前递值，而是直接观察同一条 MEM/WB payload，避免一条内容
+重复的顶层回路。
+
+## 验证
+
+模块级验证位于 `tests/cocotb/wb_stage/`：
+
+| 测试 | 覆盖内容 |
+| --- | --- |
+| `valid_transaction_writes_back_and_flattens_debug` | 有效写回和所有退休 debug 字段展平。 |
+| `instruction_without_register_write_still_retires` | store 类无 GPR 写回指令仍产生退休事件。 |
+| `bubble_masks_stale_payload` | 无效 MEM/WB payload 不产生写回或退休，x0 请求保持原语义。 |
+
+运行测试：
+
+```sh
+make test-wb-stage
+```
+
+生成波形：
+
+```sh
+make wave-wb-stage
+make wave-wb-stage-vcd
+```

@@ -1,18 +1,18 @@
 # Copyright (c) 2026
 # SPDX-License-Identifier: Apache-2.0
 
-.PHONY: all test test-common-fifo test-if-stage test-id-stage test-ex-stage test-mem-stage wave wave-if-stage wave-id-stage wave-ex-stage wave-mem-stage wave-vcd wave-if-stage-vcd wave-id-stage-vcd wave-ex-stage-vcd wave-mem-stage-vcd lint lint-if-stage clean clean-build
+.PHONY: all test test-common-fifo test-if-stage test-id-stage test-ex-stage test-mem-stage test-wb-stage wave wave-if-stage wave-id-stage wave-ex-stage wave-mem-stage wave-wb-stage wave-vcd wave-if-stage-vcd wave-id-stage-vcd wave-ex-stage-vcd wave-mem-stage-vcd wave-wb-stage-vcd lint lint-if-stage clean clean-build
 
 all: test
 
-test: test-common-fifo test-if-stage test-id-stage test-ex-stage test-mem-stage
+test: test-common-fifo test-if-stage test-id-stage test-ex-stage test-mem-stage test-wb-stage
 
 test-common-fifo:
 	$(MAKE) -C tests/cocotb/common_fifo test
 
-wave: wave-if-stage wave-id-stage wave-ex-stage wave-mem-stage
+wave: wave-if-stage wave-id-stage wave-ex-stage wave-mem-stage wave-wb-stage
 
-wave-vcd: wave-if-stage-vcd wave-id-stage-vcd wave-ex-stage-vcd wave-mem-stage-vcd
+wave-vcd: wave-if-stage-vcd wave-id-stage-vcd wave-ex-stage-vcd wave-mem-stage-vcd wave-wb-stage-vcd
 
 test-if-stage:
 	$(MAKE) -C tests/cocotb/if_stage test
@@ -26,6 +26,9 @@ test-ex-stage:
 test-mem-stage:
 	$(MAKE) -C tests/cocotb/mem_stage test
 
+test-wb-stage:
+	$(MAKE) -C tests/cocotb/wb_stage test
+
 wave-if-stage:
 	$(MAKE) -C tests/cocotb/if_stage wave
 
@@ -38,6 +41,9 @@ wave-ex-stage:
 wave-mem-stage:
 	$(MAKE) -C tests/cocotb/mem_stage wave
 
+wave-wb-stage:
+	$(MAKE) -C tests/cocotb/wb_stage wave
+
 wave-if-stage-vcd:
 	$(MAKE) -C tests/cocotb/if_stage wave-vcd
 
@@ -49,6 +55,9 @@ wave-ex-stage-vcd:
 
 wave-mem-stage-vcd:
 	$(MAKE) -C tests/cocotb/mem_stage wave-vcd
+
+wave-wb-stage-vcd:
+	$(MAKE) -C tests/cocotb/wb_stage wave-vcd
 
 clean: 
 	rm -rf build

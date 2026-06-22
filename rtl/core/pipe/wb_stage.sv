@@ -3,18 +3,13 @@
 
 import riscv_core_pkg::*;
 
-/* verilator lint_off UNUSEDSIGNAL */
 module wb_stage (
-  input logic clk_i,
-  input logic rst_ni,
-
   // MEM -> WB 事务通道。WB 是当前五级流水中指令退休的位置。
   input logic mem_wb_valid_i,
   output logic mem_wb_ready_o,
   input mem_wb_bus_t mem_wb_bus_i,
 
-  // 写回请求回送给 ID stage 内部的寄存器堆。EX 直接使用 MEM/WB 的
-  // 写回候选完成同一份数据的前递，不再重复接入 WB 输出。
+  // 写回请求回送给 ID stage 内部的寄存器堆。
   output wb_req_bus_t wb_req_o,
 
   // 扁平化退休追踪总线。仿真环境优先观察该端口，而不是逐层访问嵌套
@@ -22,11 +17,32 @@ module wb_stage (
   output core_debug_bus_t core_debug_o
 );
 
-  // 占位实现：当前不退休真实指令。后续 WB 会根据 mem_wb_bus_i 展开并填充
-  // core_debug_o，同时把最终写回数据送回 ID。
+  logic wb_fire;
+
+  // MEM/WB 寄存器已经是最后一道流水线边界。WB 不再增加状态，也不向
+  // 上游施加额外背压；寄存器堆在 wb_fire 对应的时钟边沿完成写入。
   assign mem_wb_ready_o = 1'b1;
-  assign wb_req_o = '0;
-  assign core_debug_o = '0;
+  assign wb_fire = mem_wb_valid_i && mem_wb_ready_o;
+
+  always_comb begin
+    wb_req_o = '0;
+    core_debug_o = '0;
+
+    if (wb_fire) begin
+      // 保留 valid/data_valid 的事务语义；regfile 继续负责屏蔽 x0 和不完整
+      // 的写回请求。用 wb_fire 门控可避免无效周期残留 payload 造成误写。
+      wb_req_o = mem_wb_bus_i.wb_req;
+
+      core_debug_o.valid = 1'b1;
+      core_debug_o.fetch = mem_wb_bus_i.debug.ex_debug.id_debug.if_debug.fetch;
+      core_debug_o.reg_addr = mem_wb_bus_i.debug.ex_debug.id_debug.reg_addr;
+      core_debug_o.ctrl = mem_wb_bus_i.debug.ex_debug.id_debug.ctrl;
+      core_debug_o.redirect = mem_wb_bus_i.debug.ex_debug.redirect;
+      core_debug_o.alu_result = mem_wb_bus_i.debug.ex_debug.alu_result;
+      core_debug_o.mem_req = mem_wb_bus_i.debug.mem_req;
+      core_debug_o.mem_rsp = mem_wb_bus_i.debug.mem_rsp;
+      core_debug_o.wb_req = mem_wb_bus_i.wb_req;
+    end
+  end
 
 endmodule
-/* verilator lint_on UNUSEDSIGNAL */

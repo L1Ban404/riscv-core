@@ -129,8 +129,6 @@ module riscv_core #(
   );
 
   wb_stage u_wb_stage (
-    .clk_i(clk_i),
-    .rst_ni(rst_ni),
     .mem_wb_valid_i(mem_wb_valid),
     .mem_wb_ready_o(mem_wb_ready),
     .mem_wb_bus_i(mem_wb_bus),
