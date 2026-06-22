@@ -424,6 +424,62 @@ async def forwarding_priority_load_stall_and_false_dependencies(dut):
 
 
 @cocotb.test()
+async def mem_wb_forwarding_survives_ex_backpressure(dut):
+    cocotb.start_soon(Clock(dut.clk_i, 10, unit="ns").start())
+    await reset_dut(dut)
+
+    # Fill EX/MEM so the following ID/EX transaction cannot execute yet.
+    dut.ex_mem_ready_i.value = 0
+    drive_instruction(
+        dut,
+        tag=0x3100,
+        rs1=0x10,
+        rs2=0x20,
+        rd=3,
+        wb=WB_ALU,
+        rd_write=1,
+    )
+    await accept_current(dut)
+
+    # The held consumer has stale ID/EX operand values. Two older producers
+    # retire on successive cycles while EX remains blocked.
+    drive_instruction(
+        dut,
+        tag=0x3101,
+        rs1_addr=1,
+        rs2_addr=2,
+        rs1=0x11111111,
+        rs2=0x22222222,
+        rd=4,
+        wb=WB_ALU,
+        rd_write=1,
+    )
+    set_mem_wb(dut, valid=1, data_valid=1, rd=1, value=0x12345678)
+    await Timer(1, unit="ns")
+    assert int(dut.id_ex_ready_o.value) == 0
+    await RisingEdge(dut.clk_i)
+
+    set_mem_wb(dut, valid=1, data_valid=1, rd=2, value=0x01020304)
+    await NextTimeStep()
+    assert int(dut.id_ex_ready_o.value) == 0
+    await RisingEdge(dut.clk_i)
+
+    # Both MEM/WB candidates have disappeared. Releasing EX/MEM must still use
+    # their captured values instead of the stale values stored in ID/EX.
+    set_mem_wb(dut)
+    dut.ex_mem_ready_i.value = 1
+    await NextTimeStep()
+    assert int(dut.id_ex_ready_o.value) == 1
+    await RisingEdge(dut.clk_i)
+    dut.id_ex_valid_i.value = 0
+    await NextTimeStep()
+
+    assert int(dut.ex_mem_valid_o.value) == 1
+    assert int(dut.ex_mem_instr_o.value) == 0x3101
+    assert int(dut.ex_mem_wb_wdata_o.value) == 0x1336597C
+
+
+@cocotb.test()
 async def memory_request_address_and_raw_store_data(dut):
     cocotb.start_soon(Clock(dut.clk_i, 10, unit="ns").start())
     await reset_dut(dut)

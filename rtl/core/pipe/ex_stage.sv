@@ -56,6 +56,10 @@ module ex_stage #(
   forwarding_unit #(
     .MemOutstandingDepth(MemOutstandingDepth)
   ) u_forwarding_unit (
+    .clk_i,
+    .rst_ni,
+    .transaction_valid_i(id_ex_valid_i),
+    .execute_fire_i(ex_execute_fire),
     .reg_addr_i(id_ex_bus_i.reg_addr),
     .rs1_value_i(id_ex_bus_i.exec_data.rs1_value),
     .rs2_value_i(id_ex_bus_i.exec_data.rs2_value),
