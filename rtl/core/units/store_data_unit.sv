@@ -20,7 +20,13 @@ module store_data_unit (
     case (size_i)
       MEM_SIZE_BYTE: begin
         aligned_wdata_o = wdata_i << shift_amount;
+        // Fault-injection mutation: byte stores always enable lane 0,
+        // regardless of the low address bits.
+`ifdef INJECT_STORE_BYTE_LANE_ZERO
+        wstrb_o = byte_en_t'(4'b0001);
+`else
         wstrb_o = byte_en_t'(4'b0001 << addr_offset_i);
+`endif
       end
       MEM_SIZE_HALF: begin
         aligned_wdata_o = wdata_i << shift_amount;

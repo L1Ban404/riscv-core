@@ -17,6 +17,14 @@ VERILATOR_BUILD_ARGS = [
     "-Wno-UNOPTFLAT",
 ]
 
+FAULT_DEFINES = frozenset((
+    "INJECT_ALU_ADD_AS_SUB",
+    "INJECT_LOAD_BYTE_SIGN_EXTEND",
+    "INJECT_STORE_BYTE_LANE_ZERO",
+    "INJECT_BNE_AS_BEQ",
+    "INJECT_JUMP_LINK_PC",
+))
+
 
 def env_flag(name: str, default: bool = False) -> bool:
     value = os.environ.get(name)
@@ -37,6 +45,12 @@ def test_riscv_core():
         os.environ.pop("WAVES", None)
 
     build_args = list(VERILATOR_BUILD_ARGS)
+    fault_define = os.environ.get("FAULT_INJECTION")
+    if fault_define:
+        if fault_define not in FAULT_DEFINES:
+            supported = ", ".join(sorted(FAULT_DEFINES))
+            raise ValueError(f"unsupported FAULT_INJECTION={fault_define!r}; choose one of: {supported}")
+        build_args.append(f"-D{fault_define}")
     if waves:
         build_args.append("--trace-structs")
     if waves and trace_format == "fst":

@@ -1,7 +1,7 @@
 # Copyright (c) 2026
 # SPDX-License-Identifier: Apache-2.0
 
-.PHONY: all test test-common-fifo test-if-stage test-id-stage test-ex-stage test-mem-stage test-wb-stage test-riscv-core wave wave-if-stage wave-id-stage wave-ex-stage wave-mem-stage wave-wb-stage wave-riscv-core wave-vcd wave-if-stage-vcd wave-id-stage-vcd wave-ex-stage-vcd wave-mem-stage-vcd wave-wb-stage-vcd wave-riscv-core-vcd lint lint-if-stage clean clean-build
+.PHONY: all test test-common-fifo test-if-stage test-id-stage test-ex-stage test-mem-stage test-wb-stage test-riscv-core test-riscv-core-faults wave wave-if-stage wave-id-stage wave-ex-stage wave-mem-stage wave-wb-stage wave-riscv-core wave-vcd wave-if-stage-vcd wave-id-stage-vcd wave-ex-stage-vcd wave-mem-stage-vcd wave-wb-stage-vcd wave-riscv-core-vcd lint lint-if-stage clean clean-build
 
 all: test
 
@@ -31,6 +31,9 @@ test-wb-stage:
 
 test-riscv-core:
 	$(MAKE) -C tests/cocotb/riscv_core test
+
+test-riscv-core-faults:
+	$(MAKE) -C tests/cocotb/riscv_core test-faults
 
 wave-if-stage:
 	$(MAKE) -C tests/cocotb/if_stage wave
