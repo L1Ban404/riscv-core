@@ -93,13 +93,7 @@ module ex_stage #(
     .redirect_o
   );
 
-  // Fault-injection mutation: JAL/JALR write the address of the jump itself
-  // rather than the architectural link address.
-`ifdef INJECT_JUMP_LINK_PC
   assign pc_plus_4 = id_ex_bus_i.exec_data.pc;
-`else
-  assign pc_plus_4 = id_ex_bus_i.exec_data.pc + word_t'(4);
-`endif
 
   always_comb begin
     wb_req = '0;

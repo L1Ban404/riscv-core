@@ -21,11 +21,7 @@ module branch_unit (
       BR_NONE: taken = 1'b0;
       BR_JAL, BR_JALR: taken = 1'b1;
       BR_BEQ: taken = (rs1_value_i == rs2_value_i);
-`ifdef INJECT_BNE_AS_BEQ
       BR_BNE: taken = (rs1_value_i == rs2_value_i);
-`else
-      BR_BNE: taken = (rs1_value_i != rs2_value_i);
-`endif
       BR_BLT: taken = ($signed(rs1_value_i) < $signed(rs2_value_i));
       BR_BGE: taken = ($signed(rs1_value_i) >= $signed(rs2_value_i));
       BR_BLTU: taken = (rs1_value_i < rs2_value_i);

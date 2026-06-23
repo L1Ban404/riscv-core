@@ -12,13 +12,7 @@ module alu (
 
   always_comb begin
     case (alu_op_i)
-      // Fault-injection mutation: corrupt every ADD, including address and
-      // immediate arithmetic, into a subtraction.
-`ifdef INJECT_ALU_ADD_AS_SUB
       ALU_ADD: result_o = operand_a_i - operand_b_i;
-`else
-      ALU_ADD: result_o = operand_a_i + operand_b_i;
-`endif
       ALU_SUB: result_o = operand_a_i - operand_b_i;
       ALU_SLL: result_o = operand_a_i << operand_b_i[4:0];
       ALU_SLT: result_o = word_t'($signed(operand_a_i) < $signed(operand_b_i));
