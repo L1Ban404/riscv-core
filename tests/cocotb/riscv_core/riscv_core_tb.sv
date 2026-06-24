@@ -3,7 +3,11 @@
 
 import riscv_core_pkg::*;
 
-module riscv_core_tb (
+module riscv_core_tb #(
+  parameter int unsigned FetchOutstandingDepth = 1,
+  parameter int unsigned IfIdQueueDepth = 2,
+  parameter int unsigned MemOutstandingDepth = 2
+) (
   input logic clk_i,
   input logic rst_ni,
   input logic [31:0] boot_pc_i,
@@ -96,7 +100,9 @@ module riscv_core_tb (
   assign retire_wb_wdata_o = core_debug.wb_req.wdata;
 
   riscv_core #(
-    .MemOutstandingDepth(2)
+    .FetchOutstandingDepth(FetchOutstandingDepth),
+    .IfIdQueueDepth(IfIdQueueDepth),
+    .MemOutstandingDepth(MemOutstandingDepth)
   ) u_dut (
     .clk_i,
     .rst_ni,

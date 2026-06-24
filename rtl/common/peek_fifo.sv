@@ -65,6 +65,15 @@ module peek_fifo #(
   assign data_all_o = mem_q;
   assign valid_all_o = slot_valid_q;
 
+  // 数据阵列刻意不参与异步复位：slot_valid_q 和 count_q 已经屏蔽所有
+  // 未初始化内容。将它与控制状态分开，既准确表达硬件意图，也避免 lint 将
+  // mem_q 误认为缺少异步复位赋值的寄存器。
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && !flush_i && push && !bypass_pop) begin
+      mem_q[write_ptr_q] <= data_i;
+    end
+  end
+
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       slot_valid_q <= '0;
@@ -83,7 +92,6 @@ module peek_fifo #(
       end
 
       if (push && !bypass_pop) begin
-        mem_q[write_ptr_q] <= data_i;
         slot_valid_q[write_ptr_q] <= 1'b1;
         write_ptr_q <= next_ptr(write_ptr_q);
       end

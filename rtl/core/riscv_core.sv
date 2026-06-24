@@ -4,6 +4,8 @@
 import riscv_core_pkg::*;
 
 module riscv_core #(
+  parameter int unsigned FetchOutstandingDepth = 1,
+  parameter int unsigned IfIdQueueDepth = 2,
   parameter int unsigned MemOutstandingDepth = 2
 ) (
   input logic clk_i,
@@ -71,7 +73,10 @@ module riscv_core #(
   wb_req_bus_t mem_pending_wb_req[MemOutstandingDepth];
   wb_req_bus_t wb_wb_req;
 
-  if_stage u_if_stage (
+  if_stage #(
+    .FetchOutstandingDepth(FetchOutstandingDepth),
+    .IfIdQueueDepth(IfIdQueueDepth)
+  ) u_if_stage (
     .clk_i(clk_i),
     .rst_ni(rst_ni),
     .boot_pc_i(boot_pc_i),

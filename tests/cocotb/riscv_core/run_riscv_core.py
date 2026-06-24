@@ -17,6 +17,30 @@ VERILATOR_BUILD_ARGS = [
     "-Wno-UNOPTFLAT",
 ]
 
+
+CORE_CONFIGS = [
+    ("fetch1_ifq2_mem2", {}, None),
+    (
+        "fetch1_ifq1_mem1",
+        {
+            "FetchOutstandingDepth": 1,
+            "IfIdQueueDepth": 1,
+            "MemOutstandingDepth": 1,
+        },
+        "zero_latency_core_bus_and_pipeline_flow",
+    ),
+    (
+        "fetch4_ifq1_mem4",
+        {
+            "FetchOutstandingDepth": 4,
+            "IfIdQueueDepth": 1,
+            "MemOutstandingDepth": 4,
+        },
+        "randomized_core_bus_backpressure",
+    ),
+]
+
+
 def env_flag(name: str, default: bool = False) -> bool:
     value = os.environ.get(name)
     if value is None:
@@ -26,7 +50,6 @@ def env_flag(name: str, default: bool = False) -> bool:
 
 def test_riscv_core():
     repo_root = Path(__file__).resolve().parents[3]
-    build_dir = repo_root / "build/cocotb/riscv_core"
     runner = get_runner("verilator")
     waves = env_flag("WAVES")
     trace_format = os.environ.get("TRACE_FORMAT", "fst").lower()
@@ -64,35 +87,42 @@ def test_riscv_core():
         repo_root / "tests/cocotb/riscv_core/riscv_core_tb.sv",
     ]
 
-    runner.build(
-        sources=sources,
-        includes=[repo_root / "rtl/include"],
-        hdl_toplevel="riscv_core_tb",
-        build_dir=build_dir,
-        build_args=build_args,
-        always=True,
-        waves=waves,
-    )
+    configs = CORE_CONFIGS[:1] if waves else CORE_CONFIGS
+    for name, parameters, test_filter in configs:
+        build_dir = repo_root / "build/cocotb/riscv_core" / name
+        test_args = []
+        if waves:
+            test_args.extend(["--trace-file", str(build_dir / f"dump.{trace_format}")])
 
-    test_args = []
-    if waves:
-        test_args.extend(["--trace-file", str(build_dir / f"dump.{trace_format}")])
+        runner.build(
+            sources=sources,
+            includes=[repo_root / "rtl/include"],
+            hdl_toplevel="riscv_core_tb",
+            build_dir=build_dir,
+            build_args=build_args,
+            parameters=parameters,
+            always=True,
+            waves=waves,
+        )
 
-    results_xml = build_dir / "results.xml"
-    runner.test(
-        hdl_toplevel="riscv_core_tb",
-        test_module="test_riscv_core",
-        build_dir=build_dir,
-        test_dir=repo_root / "tests/cocotb/riscv_core",
-        results_xml=results_xml,
-        test_args=test_args,
-        waves=waves,
-    )
+        results_xml = build_dir / "results.xml"
+        runner.test(
+            hdl_toplevel="riscv_core_tb",
+            test_module="test_riscv_core",
+            build_dir=build_dir,
+            test_dir=repo_root / "tests/cocotb/riscv_core",
+            results_xml=results_xml,
+            test_filter=test_filter,
+            test_args=test_args,
+            waves=waves,
+        )
 
-    results = ET.parse(results_xml).getroot()
-    failures = results.findall(".//failure") + results.findall(".//error")
-    if failures:
-        raise RuntimeError(f"CPU core regression reported {len(failures)} failure(s)")
+        results = ET.parse(results_xml).getroot()
+        failures = results.findall(".//failure") + results.findall(".//error")
+        if failures:
+            raise RuntimeError(
+                f"CPU core config {name} reported {len(failures)} failure(s)"
+            )
 
 
 if __name__ == "__main__":

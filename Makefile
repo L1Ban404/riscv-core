@@ -32,6 +32,9 @@ test-wb-stage:
 test-riscv-core:
 	$(MAKE) -C tests/cocotb/riscv_core test
 
+lint:
+	verilator --lint-only -Wall -Wno-PINCONNECTEMPTY -Wno-IMPORTSTAR -Wno-UNUSEDSIGNAL -Wno-SYNCASYNCNET -f .slang/riscv_core.f
+
 wave-if-stage:
 	$(MAKE) -C tests/cocotb/if_stage wave
 

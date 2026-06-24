@@ -247,6 +247,7 @@ class CoreBusSlave:
         self.request_log = []
         self.response_log = []
         self.blocked_request = None
+        self.blocked_response = None
 
         self.req_valid = getattr(dut, f"{prefix}_req_valid_o")
         self.req_ready = getattr(dut, f"{prefix}_req_ready_i")
@@ -274,7 +275,13 @@ class CoreBusSlave:
             if not int(self.dut.rst_ni.value):
                 self.pending.clear()
                 self.cycle = 0
+                self.request_count = 0
+                self.response_count = 0
+                self.write_log.clear()
+                self.request_log.clear()
+                self.response_log.clear()
                 self.blocked_request = None
+                self.blocked_response = None
                 self.clear_inputs()
                 continue
 
@@ -321,11 +328,25 @@ class CoreBusSlave:
             if self.blocked_request is not None:
                 assert valid, f"{self.prefix}: req_valid dropped while blocked"
                 assert payload == self.blocked_request, f"{self.prefix}: request payload changed while blocked"
+            if valid:
+                assert payload[0] & 0x3 == 0, f"{self.prefix}: request address is not word aligned"
+                if payload[2] == 0:
+                    assert payload[1] == 0, f"{self.prefix}: read request wdata must be zero"
+                if self.prefix == "imem":
+                    assert payload[1:] == (0, 0), "imem: instruction fetch must be a read"
+
+            response_payload = None if response is None else (response.rdata, response.error)
+            if self.blocked_response is not None:
+                assert response_payload is not None, f"{self.prefix}: rsp_valid dropped while blocked"
+                assert response_payload == self.blocked_response, (
+                    f"{self.prefix}: response payload changed while blocked"
+                )
             response_fire = bool(response is not None and int(self.rsp_ready.value))
 
             await RisingEdge(self.dut.clk_i)
 
             self.blocked_request = payload if valid and not ready else None
+            self.blocked_response = response_payload if response is not None and not response_fire else None
             if response_from_queue and response_fire:
                 self.pending.popleft()
                 self.response_count += 1
@@ -351,6 +372,7 @@ class CoreBusSlave:
                     self.pending.append(queued)
 
             assert self.response_count <= self.request_count
+            assert len(self.pending) == self.request_count - self.response_count
             self.cycle += 1
 
 
