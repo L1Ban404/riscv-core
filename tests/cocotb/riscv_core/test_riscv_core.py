@@ -612,35 +612,22 @@ async def run_program(dut, seed, ready_probability, immediate_probability, max_l
         try:
             check_equal(pc, reference.pc, "retirement PC", pc, instr)
             check_equal(instr, reference.memory.read_word(pc), "retirement instruction", pc, instr)
-            check_equal(int(dut.retire_illegal_o.value), 0, "illegal flag", pc, instr)
             expected = reference.execute(instr)
 
-            check_equal(int(dut.retire_wb_valid_o.value), int(expected.wb_valid), "WB valid", pc, instr)
+            check_equal(int(dut.retire_gpr_we_o.value), int(expected.wb_valid), "GPR write enable", pc, instr)
             if expected.wb_valid:
-                check_equal(int(dut.retire_wb_data_valid_o.value), 1, "WB data valid", pc, instr)
-                check_equal(int(dut.retire_wb_rd_o.value), expected.rd, "WB rd", pc, instr)
-                check_equal(int(dut.retire_wb_wdata_o.value), expected.wdata, "WB data", pc, instr)
+                check_equal(int(dut.retire_gpr_waddr_o.value), expected.rd, "GPR write address", pc, instr)
+                check_equal(int(dut.retire_gpr_wdata_o.value), expected.wdata, "GPR write data", pc, instr)
 
             check_equal(int(dut.retire_mem_valid_o.value), int(expected.mem_valid), "memory valid", pc, instr)
             if expected.mem_valid:
                 check_equal(int(dut.retire_mem_write_o.value), int(expected.mem_write), "memory write", pc, instr)
                 check_equal(int(dut.retire_mem_size_o.value), expected.mem_size, "memory size", pc, instr)
-                check_equal(
-                    int(dut.retire_mem_sign_ext_o.value), int(expected.mem_sign_ext),
-                    "memory sign extension", pc, instr,
-                )
                 check_equal(int(dut.retire_mem_addr_o.value), expected.mem_addr, "memory address", pc, instr)
-                check_equal(int(dut.retire_mem_rsp_valid_o.value), 1, "memory response valid", pc, instr)
-                check_equal(int(dut.retire_mem_rsp_error_o.value), 0, "memory response error", pc, instr)
                 if expected.mem_write:
                     check_equal(
                         int(dut.retire_mem_wdata_o.value), expected.mem_wdata,
                         "store source data", pc, instr,
-                    )
-                else:
-                    check_equal(
-                        int(dut.retire_mem_rsp_rdata_o.value), expected.raw_rdata,
-                        "load raw response", pc, instr,
                     )
 
             check_equal(

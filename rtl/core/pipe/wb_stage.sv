@@ -34,14 +34,19 @@ module wb_stage (
       wb_req_o = mem_wb_bus_i.wb_req;
 
       core_debug_o.valid = 1'b1;
-      core_debug_o.fetch = mem_wb_bus_i.debug.ex_debug.id_debug.if_debug.fetch;
-      core_debug_o.reg_addr = mem_wb_bus_i.debug.ex_debug.id_debug.reg_addr;
-      core_debug_o.ctrl = mem_wb_bus_i.debug.ex_debug.id_debug.ctrl;
-      core_debug_o.redirect = mem_wb_bus_i.debug.ex_debug.redirect;
-      core_debug_o.alu_result = mem_wb_bus_i.debug.ex_debug.alu_result;
-      core_debug_o.mem_req = mem_wb_bus_i.debug.mem_req;
-      core_debug_o.mem_rsp = mem_wb_bus_i.debug.mem_rsp;
-      core_debug_o.wb_req = mem_wb_bus_i.wb_req;
+      core_debug_o.pc = mem_wb_bus_i.debug.pc;
+      core_debug_o.instr = mem_wb_bus_i.debug.instr;
+      core_debug_o.gpr_we = mem_wb_bus_i.wb_req.valid && mem_wb_bus_i.wb_req.data_valid;
+      core_debug_o.gpr_waddr = mem_wb_bus_i.wb_req.rd_addr;
+      core_debug_o.gpr_wdata = mem_wb_bus_i.wb_req.wdata;
+      core_debug_o.mem_valid = mem_wb_bus_i.debug.mem_valid;
+      core_debug_o.mem_write = mem_wb_bus_i.debug.mem_write;
+      core_debug_o.mem_size = mem_wb_bus_i.debug.mem_size;
+      core_debug_o.mem_addr = mem_wb_bus_i.debug.mem_addr;
+      core_debug_o.mem_wdata = mem_wb_bus_i.debug.mem_wdata;
+      core_debug_o.redirect_valid = mem_wb_bus_i.debug.redirect_valid;
+      core_debug_o.redirect_target_pc = mem_wb_bus_i.debug.redirect_target_pc;
+      core_debug_o.redirect_reason = mem_wb_bus_i.debug.redirect_reason;
     end
   end
 

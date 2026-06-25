@@ -6,39 +6,60 @@
 
 `include "transaction_bus_types.svh"
 
-// Debug 总线只描述“这条指令发生了什么”，不应反向参与功能控制。
-// wb_debug_bus_t.valid 为 1 时表示一条指令在架构层面退休。
-typedef struct packed {fetch_bus_t fetch;} if_debug_bus_t;
+// Debug 总线只描述“这条指令退休时对外可观察到什么”，不应反向参与功能控制。
+// 各级 debug payload 直接列出本级以后仍需要的字段，避免逐级嵌套。
+typedef struct packed {
+  pc_t pc;
+  instr_t instr;
+} if_debug_bus_t;
 
 typedef struct packed {
-  if_debug_bus_t if_debug;
-  reg_addr_bus_t reg_addr;
-  decode_ctrl_bus_t ctrl;
+  pc_t pc;
+  instr_t instr;
 } id_debug_bus_t;
 
 typedef struct packed {
-  id_debug_bus_t id_debug;
-  redirect_bus_t redirect;
-  word_t alu_result;
+  pc_t pc;
+  instr_t instr;
+  logic mem_valid;
+  logic mem_write;
+  mem_size_e mem_size;
+  word_t mem_addr;
+  word_t mem_wdata;
+  logic redirect_valid;
+  pc_t redirect_target_pc;
+  redirect_reason_e redirect_reason;
 } ex_debug_bus_t;
 
 typedef struct packed {
-  ex_debug_bus_t ex_debug;
-  mem_req_bus_t mem_req;
-  mem_rsp_bus_t mem_rsp;
+  pc_t pc;
+  instr_t instr;
+  logic mem_valid;
+  logic mem_write;
+  mem_size_e mem_size;
+  word_t mem_addr;
+  word_t mem_wdata;
+  logic redirect_valid;
+  pc_t redirect_target_pc;
+  redirect_reason_e redirect_reason;
 } mem_debug_bus_t;
 
 typedef struct packed {
-  // 面向上层仿真环境，语义等价于展开后的 wb_debug_bus_t。
+  // 面向上层仿真环境的退休追踪总线。valid 为 1 表示本周期退休一条指令。
   logic valid;
-  fetch_bus_t fetch;
-  reg_addr_bus_t reg_addr;
-  decode_ctrl_bus_t ctrl;
-  redirect_bus_t redirect;
-  word_t alu_result;
-  mem_req_bus_t mem_req;
-  mem_rsp_bus_t mem_rsp;
-  wb_req_bus_t wb_req;
+  pc_t pc;
+  instr_t instr;
+  logic gpr_we;
+  reg_addr_t gpr_waddr;
+  word_t gpr_wdata;
+  logic mem_valid;
+  logic mem_write;
+  mem_size_e mem_size;
+  word_t mem_addr;
+  word_t mem_wdata;
+  logic redirect_valid;
+  pc_t redirect_target_pc;
+  redirect_reason_e redirect_reason;
 } core_debug_bus_t;
 
 `endif

@@ -141,9 +141,16 @@ module ex_stage #(
     executed_ex_mem_bus = '0;
     executed_ex_mem_bus.mem_req = mem_req;
     executed_ex_mem_bus.wb_req = wb_req;
-    executed_ex_mem_bus.debug.id_debug = id_ex_bus_i.debug;
-    executed_ex_mem_bus.debug.redirect = redirect_o;
-    executed_ex_mem_bus.debug.alu_result = alu_result;
+    executed_ex_mem_bus.debug.pc = id_ex_bus_i.debug.pc;
+    executed_ex_mem_bus.debug.instr = id_ex_bus_i.debug.instr;
+    executed_ex_mem_bus.debug.mem_valid = mem_req.valid;
+    executed_ex_mem_bus.debug.mem_write = mem_req.write;
+    executed_ex_mem_bus.debug.mem_size = mem_req.size;
+    executed_ex_mem_bus.debug.mem_addr = mem_req.addr;
+    executed_ex_mem_bus.debug.mem_wdata = mem_req.wdata;
+    executed_ex_mem_bus.debug.redirect_valid = redirect_o.valid;
+    executed_ex_mem_bus.debug.redirect_target_pc = redirect_o.target_pc;
+    executed_ex_mem_bus.debug.redirect_reason = redirect_o.reason;
   end
 
   // EX/MEM 与 ID/EX 一样使用单入口双向握手寄存器。满载且 MEM ready 时

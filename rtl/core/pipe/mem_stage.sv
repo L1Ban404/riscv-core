@@ -139,16 +139,29 @@ module mem_stage #(
       completed_mem_bus.wb_req.data_valid = 1'b1;
       completed_mem_bus.wb_req.wdata = loaded_data;
     end
-    completed_mem_bus.debug.ex_debug = outstanding_head.debug;
-    completed_mem_bus.debug.mem_req = outstanding_head.mem_req;
-    completed_mem_bus.debug.mem_rsp.valid = 1'b1;
-    completed_mem_bus.debug.mem_rsp.error = dmem_resp_i.rsp.error;
-    completed_mem_bus.debug.mem_rsp.rdata = dmem_resp_i.rsp.rdata;
+    completed_mem_bus.debug.pc = outstanding_head.debug.pc;
+    completed_mem_bus.debug.instr = outstanding_head.debug.instr;
+    completed_mem_bus.debug.mem_valid = outstanding_head.debug.mem_valid;
+    completed_mem_bus.debug.mem_write = outstanding_head.debug.mem_write;
+    completed_mem_bus.debug.mem_size = outstanding_head.debug.mem_size;
+    completed_mem_bus.debug.mem_addr = outstanding_head.debug.mem_addr;
+    completed_mem_bus.debug.mem_wdata = outstanding_head.debug.mem_wdata;
+    completed_mem_bus.debug.redirect_valid = outstanding_head.debug.redirect_valid;
+    completed_mem_bus.debug.redirect_target_pc = outstanding_head.debug.redirect_target_pc;
+    completed_mem_bus.debug.redirect_reason = outstanding_head.debug.redirect_reason;
 
     bypass_mem_bus = '0;
     bypass_mem_bus.wb_req = ex_mem_bus_i.wb_req;
-    bypass_mem_bus.debug.ex_debug = ex_mem_bus_i.debug;
-    bypass_mem_bus.debug.mem_req = ex_mem_bus_i.mem_req;
+    bypass_mem_bus.debug.pc = ex_mem_bus_i.debug.pc;
+    bypass_mem_bus.debug.instr = ex_mem_bus_i.debug.instr;
+    bypass_mem_bus.debug.mem_valid = ex_mem_bus_i.debug.mem_valid;
+    bypass_mem_bus.debug.mem_write = ex_mem_bus_i.debug.mem_write;
+    bypass_mem_bus.debug.mem_size = ex_mem_bus_i.debug.mem_size;
+    bypass_mem_bus.debug.mem_addr = ex_mem_bus_i.debug.mem_addr;
+    bypass_mem_bus.debug.mem_wdata = ex_mem_bus_i.debug.mem_wdata;
+    bypass_mem_bus.debug.redirect_valid = ex_mem_bus_i.debug.redirect_valid;
+    bypass_mem_bus.debug.redirect_target_pc = ex_mem_bus_i.debug.redirect_target_pc;
+    bypass_mem_bus.debug.redirect_reason = ex_mem_bus_i.debug.redirect_reason;
 
     // outstanding 响应优先；FIFO 非空时 ex_mem_ready_o 会阻止非访存输入。
     if (outstanding_head_valid) begin

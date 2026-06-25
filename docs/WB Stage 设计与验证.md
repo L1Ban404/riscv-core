@@ -8,7 +8,7 @@ WB 是五级顺序流水线的退休点，负责：
 
 - 把 MEM/WB 中的最终写回事务送回 ID 内部寄存器堆。
 - 在事务真正退休时产生 `core_debug_o.valid`。
-- 将随指令累积的 IF/ID/EX/MEM debug payload 展平。
+- 将随指令移动的扁平 debug payload 形成最终退休 trace。
 - 保证 store、branch 等不写 GPR 的指令仍能正常退休。
 
 ## 组合退休端
@@ -42,14 +42,21 @@ wb_req.valid && wb_req.data_valid && rd_addr != x0
 
 x0 过滤由 `regfile` 统一负责，WB 不改写原始退休事务的 `rd_addr`。
 
-## Debug 展平
+## Debug 退休 trace
 
-`core_debug_o.valid` 仅在 `wb_fire` 时置位。其余字段从 `mem_wb_bus_i`
-逐层展开：
+`core_debug_o.valid` 仅在 `wb_fire` 时置位。其余字段只保留退休观察需要的
+架构事件：
 
 ```text
-fetch / reg_addr / ctrl / redirect / alu_result / mem_req / mem_rsp / wb_req
+pc / instr
+gpr_we / gpr_waddr / gpr_wdata
+mem_valid / mem_write / mem_size / mem_addr / mem_wdata
+redirect_valid / redirect_target_pc / redirect_reason
 ```
+
+`gpr_we` 由 `wb_req.valid && wb_req.data_valid` 折叠得到。`mem_sign_ext`、
+原始 `mem_rsp.rdata`、译码 `ctrl` 和 EX 中间 `alu_result` 不进入最终 trace；
+load 的符号/零扩展结果已经体现在 `gpr_wdata`。
 
 在 bubble 周期，整个 `core_debug_o` 清零。Debug 只记录已退休指令，不参与任何
 功能控制或前递判断。

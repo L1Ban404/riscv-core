@@ -118,9 +118,9 @@ pending 数组不携带可前递数据。`forwarding_unit` 只比较所有有效
 
 ## 当前错误处理边界
 
-CoreBus `error` 和原始 `rdata` 会进入 MEM debug payload，但当前不产生 trap，也不
-抑制 load 写回。非对齐访问异常同样留待异常/CSR 通路统一实现。系统软件在该功能
-完成前不能依赖精确数据访问异常。
+CoreBus `error` 和原始 `rdata` 当前不进入最终退休 trace，也不产生 trap 或抑制
+load 写回。load 的最终架构结果通过 `gpr_wdata` 观察；非对齐访问异常同样留待
+异常/CSR 通路统一实现。系统软件在该功能完成前不能依赖精确数据访问异常。
 
 ## 验证
 

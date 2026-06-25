@@ -265,7 +265,8 @@ redirect.valid = ex_execute_fire && taken && !illegal_instr;
 - redirect 发生时，ID/EX 中仍然保存产生跳转的指令。
 - IF 同周期屏蔽年轻输入，ID/EX 不需要独立 flush。
 
-完整的 `redirect_bus_t` 同时写入 EX debug，其中包含 `valid`、目标 PC 和原因。
+redirect 结果以扁平字段写入 EX debug，其中包含 `redirect_valid`、
+`redirect_target_pc` 和 `redirect_reason`。
 
 ## 写回请求
 
@@ -340,9 +341,9 @@ EX 输出的 `ex_mem_bus_t` 包含：
 | --- | --- |
 | `mem_req` | 地址、访问大小、load/store 属性及原始 store 数据。 |
 | `wb_req` | ALU、PC+4 或尚未有效的 load 写回候选。 |
-| `debug.id_debug` | 从 ID 继续传递的 fetch、寄存器地址和控制快照。 |
-| `debug.redirect` | 本条指令产生的完整 redirect 事务。 |
-| `debug.alu_result` | ALU 最终结果。 |
+| `debug.pc/instr` | 从 ID 继续传递的取指快照。 |
+| `debug.mem_*` | 本条指令的访存事件字段，来自 EX 生成的 `mem_req`。 |
+| `debug.redirect_*` | 本条指令产生的 redirect 事件字段。 |
 
 Debug 总线只记录指令行为，不反向参与功能控制。
 

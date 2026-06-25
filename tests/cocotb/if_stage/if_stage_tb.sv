@@ -56,8 +56,8 @@ module if_stage_tb #(
 
   assign if_id_pc_o = if_id_bus.fetch.pc;
   assign if_id_instr_o = if_id_bus.fetch.instr;
-  assign if_id_debug_pc_o = if_id_bus.debug.fetch.pc;
-  assign if_id_debug_instr_o = if_id_bus.debug.fetch.instr;
+  assign if_id_debug_pc_o = if_id_bus.debug.pc;
+  assign if_id_debug_instr_o = if_id_bus.debug.instr;
 
   if_stage #(
     .FetchOutstandingDepth(FetchOutstandingDepth),

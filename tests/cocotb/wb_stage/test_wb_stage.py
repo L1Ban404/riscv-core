@@ -27,23 +27,14 @@ def drive_payload(
 
     dut.fetch_pc_i.value = pc & MASK32
     dut.fetch_instr_i.value = instr & MASK32
-    dut.rs1_addr_i.value = 11
-    dut.rs2_addr_i.value = 12
-    dut.rd_addr_i.value = wb_rd
-    dut.ctrl_i.value = 0x15555
     dut.redirect_valid_i.value = 1
     dut.redirect_target_pc_i.value = 0x80000100
     dut.redirect_reason_i.value = 1
-    dut.alu_result_i.value = 0xCAFEBABE
     dut.mem_req_valid_i.value = 1
     dut.mem_req_write_i.value = 0
     dut.mem_req_size_i.value = 2
-    dut.mem_req_sign_ext_i.value = 1
     dut.mem_req_addr_i.value = 0x1003
     dut.mem_req_wdata_i.value = 0xA5A55A5A
-    dut.mem_rsp_valid_i.value = 1
-    dut.mem_rsp_error_i.value = 1
-    dut.mem_rsp_rdata_i.value = 0xDEADBEEF
 
 
 def assert_zeroed_outputs(dut):
@@ -54,9 +45,7 @@ def assert_zeroed_outputs(dut):
     assert int(dut.retire_valid_o.value) == 0
     assert int(dut.retire_pc_o.value) == 0
     assert int(dut.retire_instr_o.value) == 0
-    assert int(dut.retire_ctrl_o.value) == 0
-    assert int(dut.retire_mem_rsp_rdata_o.value) == 0
-    assert int(dut.retire_wb_valid_o.value) == 0
+    assert int(dut.retire_gpr_we_o.value) == 0
 
 
 @cocotb.test()
@@ -73,27 +62,17 @@ async def valid_transaction_writes_back_and_flattens_debug(dut):
     assert int(dut.retire_valid_o.value) == 1
     assert int(dut.retire_pc_o.value) == 0x80000000
     assert int(dut.retire_instr_o.value) == 0x00C585B3
-    assert int(dut.retire_rs1_addr_o.value) == 11
-    assert int(dut.retire_rs2_addr_o.value) == 12
-    assert int(dut.retire_rd_addr_o.value) == 7
-    assert int(dut.retire_ctrl_o.value) == 0x15555
     assert int(dut.retire_redirect_valid_o.value) == 1
     assert int(dut.retire_redirect_target_pc_o.value) == 0x80000100
     assert int(dut.retire_redirect_reason_o.value) == 1
-    assert int(dut.retire_alu_result_o.value) == 0xCAFEBABE
     assert int(dut.retire_mem_req_valid_o.value) == 1
     assert int(dut.retire_mem_req_write_o.value) == 0
     assert int(dut.retire_mem_req_size_o.value) == 2
-    assert int(dut.retire_mem_req_sign_ext_o.value) == 1
     assert int(dut.retire_mem_req_addr_o.value) == 0x1003
     assert int(dut.retire_mem_req_wdata_o.value) == 0xA5A55A5A
-    assert int(dut.retire_mem_rsp_valid_o.value) == 1
-    assert int(dut.retire_mem_rsp_error_o.value) == 1
-    assert int(dut.retire_mem_rsp_rdata_o.value) == 0xDEADBEEF
-    assert int(dut.retire_wb_valid_o.value) == 1
-    assert int(dut.retire_wb_data_valid_o.value) == 1
-    assert int(dut.retire_wb_rd_addr_o.value) == 7
-    assert int(dut.retire_wb_wdata_o.value) == 0x12345678
+    assert int(dut.retire_gpr_we_o.value) == 1
+    assert int(dut.retire_gpr_waddr_o.value) == 7
+    assert int(dut.retire_gpr_wdata_o.value) == 0x12345678
 
 
 @cocotb.test()
@@ -114,7 +93,7 @@ async def instruction_without_register_write_still_retires(dut):
     assert int(dut.retire_pc_o.value) == 0x80000020
     assert int(dut.retire_instr_o.value) == 0x00B52023
     assert int(dut.wb_valid_o.value) == 0
-    assert int(dut.retire_wb_valid_o.value) == 0
+    assert int(dut.retire_gpr_we_o.value) == 0
 
 
 @cocotb.test()

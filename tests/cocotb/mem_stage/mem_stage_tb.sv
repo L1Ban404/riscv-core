@@ -49,8 +49,7 @@ module mem_stage_tb (
   output logic mem_wb_mem_write_o,
   output logic [1:0] mem_wb_mem_size_o,
   output logic [31:0] mem_wb_mem_addr_o,
-  output logic mem_wb_rsp_valid_o,
-  output logic [31:0] mem_wb_rsp_rdata_o
+  output logic [31:0] mem_wb_mem_wdata_o
 );
 
   ex_mem_bus_t ex_mem_bus;
@@ -72,8 +71,13 @@ module mem_stage_tb (
     ex_mem_bus.wb_req.data_valid = ex_mem_wb_data_valid_i;
     ex_mem_bus.wb_req.rd_addr = ex_mem_wb_rd_addr_i;
     ex_mem_bus.wb_req.wdata = ex_mem_wb_wdata_i;
-    ex_mem_bus.debug.id_debug.if_debug.fetch.pc = ex_mem_pc_i;
-    ex_mem_bus.debug.id_debug.if_debug.fetch.instr = ex_mem_instr_i;
+    ex_mem_bus.debug.pc = ex_mem_pc_i;
+    ex_mem_bus.debug.instr = ex_mem_instr_i;
+    ex_mem_bus.debug.mem_valid = ex_mem_mem_valid_i;
+    ex_mem_bus.debug.mem_write = ex_mem_mem_write_i;
+    ex_mem_bus.debug.mem_size = mem_size_e'(ex_mem_mem_size_i);
+    ex_mem_bus.debug.mem_addr = ex_mem_mem_addr_i;
+    ex_mem_bus.debug.mem_wdata = ex_mem_mem_wdata_i;
   end
 
   assign dmem_resp.req_ready = dmem_req_ready_i;
@@ -96,14 +100,13 @@ module mem_stage_tb (
   assign mem_wb_req_data_valid_o = mem_wb_req.data_valid;
   assign mem_wb_req_rd_addr_o = mem_wb_req.rd_addr;
   assign mem_wb_req_wdata_o = mem_wb_req.wdata;
-  assign mem_wb_pc_o = mem_wb_bus.debug.ex_debug.id_debug.if_debug.fetch.pc;
-  assign mem_wb_instr_o = mem_wb_bus.debug.ex_debug.id_debug.if_debug.fetch.instr;
-  assign mem_wb_mem_valid_o = mem_wb_bus.debug.mem_req.valid;
-  assign mem_wb_mem_write_o = mem_wb_bus.debug.mem_req.write;
-  assign mem_wb_mem_size_o = mem_wb_bus.debug.mem_req.size;
-  assign mem_wb_mem_addr_o = mem_wb_bus.debug.mem_req.addr;
-  assign mem_wb_rsp_valid_o = mem_wb_bus.debug.mem_rsp.valid;
-  assign mem_wb_rsp_rdata_o = mem_wb_bus.debug.mem_rsp.rdata;
+  assign mem_wb_pc_o = mem_wb_bus.debug.pc;
+  assign mem_wb_instr_o = mem_wb_bus.debug.instr;
+  assign mem_wb_mem_valid_o = mem_wb_bus.debug.mem_valid;
+  assign mem_wb_mem_write_o = mem_wb_bus.debug.mem_write;
+  assign mem_wb_mem_size_o = mem_wb_bus.debug.mem_size;
+  assign mem_wb_mem_addr_o = mem_wb_bus.debug.mem_addr;
+  assign mem_wb_mem_wdata_o = mem_wb_bus.debug.mem_wdata;
 
   mem_stage #(
     .MemOutstandingDepth(2)

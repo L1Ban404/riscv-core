@@ -115,8 +115,8 @@ module if_stage #(
 
   assign fetch_fifo_data.fetch.pc = pc_fifo_data.pc;
   assign fetch_fifo_data.fetch.instr = instr_t'(imem_resp_i.rsp.rdata);
-  assign fetch_fifo_data.debug.fetch.pc = pc_fifo_data.pc;
-  assign fetch_fifo_data.debug.fetch.instr = instr_t'(imem_resp_i.rsp.rdata);
+  assign fetch_fifo_data.debug.pc = pc_fifo_data.pc;
+  assign fetch_fifo_data.debug.instr = instr_t'(imem_resp_i.rsp.rdata);
 
   // fetch FIFO 在 redirect 周期同步清空；组合输出也用 redirect_i.valid 屏蔽，
   // 避免同周期把旧路径指令继续交给 ID。

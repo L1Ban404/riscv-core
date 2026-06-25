@@ -58,8 +58,7 @@ module ex_stage_tb (
   output logic [31:0] ex_mem_wb_wdata_o,
   output logic ex_mem_debug_redirect_valid_o,
   output logic [31:0] ex_mem_debug_redirect_target_o,
-  output logic [2:0] ex_mem_debug_redirect_reason_o,
-  output logic [31:0] ex_mem_debug_alu_result_o
+  output logic [2:0] ex_mem_debug_redirect_reason_o
 );
 
   id_ex_bus_t id_ex_bus;
@@ -89,9 +88,8 @@ module ex_stage_tb (
     id_ex_bus.ctrl.wb_sel = wb_sel_e'(id_ex_wb_sel_i);
     id_ex_bus.ctrl.rd_write = id_ex_rd_write_i;
     id_ex_bus.ctrl.illegal_instr = id_ex_illegal_instr_i;
-    id_ex_bus.debug.if_debug.fetch = id_ex_bus.fetch;
-    id_ex_bus.debug.reg_addr = id_ex_bus.reg_addr;
-    id_ex_bus.debug.ctrl = id_ex_bus.ctrl;
+    id_ex_bus.debug.pc = id_ex_bus.fetch.pc;
+    id_ex_bus.debug.instr = id_ex_bus.fetch.instr;
   end
 
   assign mem_wb_req = '{valid: mem_wb_valid_i,
@@ -111,8 +109,8 @@ module ex_stage_tb (
   assign redirect_target_pc_o = redirect.target_pc;
   assign redirect_reason_o = redirect.reason;
 
-  assign ex_mem_pc_o = ex_mem_bus.debug.id_debug.if_debug.fetch.pc;
-  assign ex_mem_instr_o = ex_mem_bus.debug.id_debug.if_debug.fetch.instr;
+  assign ex_mem_pc_o = ex_mem_bus.debug.pc;
+  assign ex_mem_instr_o = ex_mem_bus.debug.instr;
   assign ex_mem_mem_valid_o = ex_mem_bus.mem_req.valid;
   assign ex_mem_mem_write_o = ex_mem_bus.mem_req.write;
   assign ex_mem_mem_size_o = ex_mem_bus.mem_req.size;
@@ -123,10 +121,9 @@ module ex_stage_tb (
   assign ex_mem_wb_data_valid_o = ex_mem_bus.wb_req.data_valid;
   assign ex_mem_wb_rd_addr_o = ex_mem_bus.wb_req.rd_addr;
   assign ex_mem_wb_wdata_o = ex_mem_bus.wb_req.wdata;
-  assign ex_mem_debug_redirect_valid_o = ex_mem_bus.debug.redirect.valid;
-  assign ex_mem_debug_redirect_target_o = ex_mem_bus.debug.redirect.target_pc;
-  assign ex_mem_debug_redirect_reason_o = ex_mem_bus.debug.redirect.reason;
-  assign ex_mem_debug_alu_result_o = ex_mem_bus.debug.alu_result;
+  assign ex_mem_debug_redirect_valid_o = ex_mem_bus.debug.redirect_valid;
+  assign ex_mem_debug_redirect_target_o = ex_mem_bus.debug.redirect_target_pc;
+  assign ex_mem_debug_redirect_reason_o = ex_mem_bus.debug.redirect_reason;
 
   ex_stage u_dut (
     .clk_i,

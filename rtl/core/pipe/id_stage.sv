@@ -67,9 +67,8 @@ module id_stage (
     decoded_id_ex_bus.exec_data.rs2_value = rs2_value;
     decoded_id_ex_bus.exec_data.imm = decoded_imm;
     decoded_id_ex_bus.ctrl = decoded_ctrl;
-    decoded_id_ex_bus.debug.if_debug = if_id_bus_i.debug;
-    decoded_id_ex_bus.debug.reg_addr = decoded_reg_addr;
-    decoded_id_ex_bus.debug.ctrl = decoded_ctrl;
+    decoded_id_ex_bus.debug.pc = if_id_bus_i.debug.pc;
+    decoded_id_ex_bus.debug.instr = if_id_bus_i.debug.instr;
   end
 
   // 本地 stream_register 实现单入口双向 ready/valid 握手。

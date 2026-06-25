@@ -115,7 +115,7 @@ IF -> ID -> EX -> MEM -> WB
 2. `riscv_isa_config.svh`：ISA 编码与归一化执行控制。
 3. `core_bus_types.svh`：CoreBus 请求、响应和握手类型。
 4. `transaction_bus_types.svh`：可复用流水线事务类型。
-5. `debug_bus_types.svh`：逐级 debug 类型。
+5. `debug_bus_types.svh`：扁平 debug/retire trace 类型。
 6. `pipeline_bus_types.svh`：流水线边界 payload。
 
 ### 4.1 流水线 Payload
@@ -557,7 +557,7 @@ WB 负责：
 
 - 将有效且 `data_valid=1` 的 `wb_req`送回 ID 寄存器堆。
 - 用 `wb_fire` 门控写回，保证事务只提交一次。
-- 将逐级 debug payload 展平为 `core_debug_o`。
+- 将扁平 debug payload 和最终写回行为形成 `core_debug_o`。
 - 仅在 `wb_fire` 时拉高 `core_debug_o.valid`。
 - 确保 store、branch、FENCE 等无寄存器写回指令仍能正常退休。
 
@@ -608,22 +608,25 @@ line refill/writeback 的独立协议。无 cache 配置也应通过单独适配
 
 ## 11. Debug 与退休追踪
 
-Debug payload 随指令逐级累积：
+Debug payload 随指令逐级移动，但各级类型直接列出字段，不再互相嵌套：
 
 ```text
-IF debug  -> fetch
-ID debug  -> fetch + reg_addr + ctrl
-EX debug  -> ID debug + redirect + alu_result
-MEM debug -> EX debug + mem_req + mem_rsp
-WB debug  -> MEM debug + wb_req + retire valid
+IF/ID  -> pc + instr
+ID/EX  -> pc + instr
+EX/MEM -> pc + instr + mem access + redirect
+MEM/WB -> pc + instr + mem access + redirect
+WB     -> MEM/WB debug + gpr write + retire valid
 ```
 
 原则：
 
-- debug 描述“这条指令发生了什么”。
+- debug 描述“这条指令退休时对外可观察到什么”。
 - debug 不得反向参与功能控制。
 - payload 被反压时 debug 必须和功能 payload 一起保持稳定。
 - `core_debug_o.valid` 只表示退休事件，不表示流水线中存在指令。
+- `core_debug_o` 不携带译码控制、源寄存器地址、ALU 中间结果、load 符号扩展控制
+  或原始 CoreBus response；这些要么可由 `instr` 重译码，要么已经体现在
+  `gpr_wdata`/访存事件字段中。
 
 未来接入 RVFI 时，建议从 WB 退休 payload 派生，而不是从不同 stage 临时拼接，
 这样更容易保证所有字段属于同一条指令。

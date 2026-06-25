@@ -42,7 +42,7 @@ module id_stage_tb (
 
   assign if_id_bus = '{
     fetch: '{pc: if_id_pc_i, instr: if_id_instr_i},
-    debug: '{fetch: '{pc: if_id_pc_i, instr: if_id_instr_i}}
+    debug: '{pc: if_id_pc_i, instr: if_id_instr_i}
   };
   assign wb_req = '{valid: wb_valid_i, data_valid: wb_data_valid_i,
                     rd_addr: wb_rd_addr_i, wdata: wb_wdata_i};

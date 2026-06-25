@@ -154,7 +154,7 @@ async def store_alignment_and_load_extraction(dut):
     await return_response(dut, 0)
     assert int(dut.mem_wb_mem_valid_o.value) == 1
     assert int(dut.mem_wb_mem_write_o.value) == 1
-    assert int(dut.mem_wb_rsp_valid_o.value) == 1
+    assert int(dut.mem_wb_mem_wdata_o.value) == 0xA1B2C3D4
     await RisingEdge(dut.clk_i)
 
     await issue_memory(
@@ -177,7 +177,6 @@ async def store_alignment_and_load_extraction(dut):
     assert int(dut.mem_wb_req_data_valid_o.value) == 1
     assert int(dut.mem_wb_req_rd_addr_o.value) == 7
     assert int(dut.mem_wb_req_wdata_o.value) == 0xFFFFFF80
-    assert int(dut.mem_wb_rsp_rdata_o.value) == 0x00008000
 
     # LBU must zero-extend the selected byte instead of inheriting LB's sign extension.
     await RisingEdge(dut.clk_i)

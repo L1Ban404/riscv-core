@@ -35,22 +35,17 @@ module riscv_core_tb #(
   output logic retire_valid_o,
   output logic [31:0] retire_pc_o,
   output logic [31:0] retire_instr_o,
-  output logic retire_illegal_o,
   output logic retire_redirect_valid_o,
   output logic [31:0] retire_redirect_target_o,
+  output logic [2:0] retire_redirect_reason_o,
   output logic retire_mem_valid_o,
   output logic retire_mem_write_o,
   output logic [1:0] retire_mem_size_o,
-  output logic retire_mem_sign_ext_o,
   output logic [31:0] retire_mem_addr_o,
   output logic [31:0] retire_mem_wdata_o,
-  output logic retire_mem_rsp_valid_o,
-  output logic retire_mem_rsp_error_o,
-  output logic [31:0] retire_mem_rsp_rdata_o,
-  output logic retire_wb_valid_o,
-  output logic retire_wb_data_valid_o,
-  output logic [4:0] retire_wb_rd_o,
-  output logic [31:0] retire_wb_wdata_o
+  output logic retire_gpr_we_o,
+  output logic [4:0] retire_gpr_waddr_o,
+  output logic [31:0] retire_gpr_wdata_o
 );
 
   core_bus_req_t imem_req;
@@ -80,24 +75,19 @@ module riscv_core_tb #(
   assign dmem_resp.rsp.error = dmem_rsp_error_i;
 
   assign retire_valid_o = core_debug.valid;
-  assign retire_pc_o = core_debug.fetch.pc;
-  assign retire_instr_o = core_debug.fetch.instr;
-  assign retire_illegal_o = core_debug.ctrl.illegal_instr;
-  assign retire_redirect_valid_o = core_debug.redirect.valid;
-  assign retire_redirect_target_o = core_debug.redirect.target_pc;
-  assign retire_mem_valid_o = core_debug.mem_req.valid;
-  assign retire_mem_write_o = core_debug.mem_req.write;
-  assign retire_mem_size_o = core_debug.mem_req.size;
-  assign retire_mem_sign_ext_o = core_debug.mem_req.sign_ext;
-  assign retire_mem_addr_o = core_debug.mem_req.addr;
-  assign retire_mem_wdata_o = core_debug.mem_req.wdata;
-  assign retire_mem_rsp_valid_o = core_debug.mem_rsp.valid;
-  assign retire_mem_rsp_error_o = core_debug.mem_rsp.error;
-  assign retire_mem_rsp_rdata_o = core_debug.mem_rsp.rdata;
-  assign retire_wb_valid_o = core_debug.wb_req.valid;
-  assign retire_wb_data_valid_o = core_debug.wb_req.data_valid;
-  assign retire_wb_rd_o = core_debug.wb_req.rd_addr;
-  assign retire_wb_wdata_o = core_debug.wb_req.wdata;
+  assign retire_pc_o = core_debug.pc;
+  assign retire_instr_o = core_debug.instr;
+  assign retire_redirect_valid_o = core_debug.redirect_valid;
+  assign retire_redirect_target_o = core_debug.redirect_target_pc;
+  assign retire_redirect_reason_o = core_debug.redirect_reason;
+  assign retire_mem_valid_o = core_debug.mem_valid;
+  assign retire_mem_write_o = core_debug.mem_write;
+  assign retire_mem_size_o = core_debug.mem_size;
+  assign retire_mem_addr_o = core_debug.mem_addr;
+  assign retire_mem_wdata_o = core_debug.mem_wdata;
+  assign retire_gpr_we_o = core_debug.gpr_we;
+  assign retire_gpr_waddr_o = core_debug.gpr_waddr;
+  assign retire_gpr_wdata_o = core_debug.gpr_wdata;
 
   riscv_core #(
     .FetchOutstandingDepth(FetchOutstandingDepth),

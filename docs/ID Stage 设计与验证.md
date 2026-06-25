@@ -223,7 +223,7 @@ ID 输出的 `id_ex_bus_t` 包含：
 | `exec_data.rs2_value` | ID 读取或 WB 旁路后的 rs2 值。 |
 | `exec_data.imm` | 已扩展到 XLEN 的立即数。 |
 | `ctrl` | ALU、分支、访存和写回控制。 |
-| `debug` | IF debug、寄存器地址和译码控制快照。 |
+| `debug` | 继续传递退休 trace 需要的 `pc` 和 `instr`。 |
 
 ## 协议断言
 

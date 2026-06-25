@@ -226,9 +226,10 @@ smoke 覆盖 `(IF outstanding, IF/ID queue, MEM outstanding)` 的 `(1,1,1)`、
 
 ### P1-3：debug/trace 数据路径对小面积目标过重
 
-`core_debug_o` 是 309-bit 展平退休总线。为了形成它，fetch、reg_addr、ctrl、
+旧版 `core_debug_o` 是 309-bit 展平退休总线。为了形成它，fetch、reg_addr、ctrl、
 redirect、ALU、mem request/response 等字段随流水线移动，MEM outstanding FIFO
-还保存完整 `ex_mem_bus_t`。
+还保存完整 `ex_mem_bus_t`。当前实现已收敛为约 207-bit 的扁平退休 trace，只保留
+valid、PC、指令、GPR 写回、访存事件和 redirect 事件。
 
 同一 Yosys 通用综合流程的对照结果：
 
@@ -240,13 +241,14 @@ redirect、ALU、mem request/response 等字段随流水线移动，MEM outstand
 
 该数字不是工艺面积，但说明 trace 对寄存器资源的影响非常显著。建议：
 
-1. 增加综合期 `TraceEnable` 配置，验证版本保留完整 trace，流片版本可裁剪。
+1. 增加综合期 `TraceEnable` 配置，验证版本保留退休 trace，流片版本可进一步裁剪。
 2. 功能 payload 与 trace payload 分离；功能逻辑不得依赖 trace。
 3. 流片若需要可观测性，保留紧凑退休接口，例如 valid、PC、instr、rd、wdata、
-   trap cause，而不是逐级嵌套所有控制字段。
+   trap cause，而不是携带所有控制字段和中间结果。
 4. outstanding FIFO 使用专用紧凑 LSU metadata，不保存完整 `ex_mem_bus_t`。
 
-最终决策必须在 PDK 综合下比较，但不建议让当前完整 debug 总线直接进入小面积版图。
+最终决策必须在 PDK 综合下比较；即便当前 trace 已裁剪，流片配置仍应确认是否需要
+全部退休字段。
 
 ### P1-4：CoreBus 环境契约缺少完整断言
 
